@@ -1,22 +1,8 @@
-# jaco_learning
- 
-From sahand:
+# ros_interface
 
-Running the Code on Jaco 2 Robot
-Bring up the robot:
-roslaunch kinova_bringup kinova_robot.launch kinova_robotType:=j2n6s300
+Convert dm_control commands to ros for taking actions and returning state on real robots. 
 
-Launch MoveIt! and RViz if you want to use MoveIt! for planning:
-roslaunch j2n6s300_moveit_config j2n6s300_jaco_lfd.launch
-
-To use the software E-stop in torque control mode, run the following node. Use ctrl-C to stop the motion whenever the robot was approaching a dangerous position. Shutting down this node switches the robot from torque control mode to position control mode:
-rosrun kinova_driver kinova_emergency_stop
-
-# Tasks
-
-build com protocal between dm_control and ros
-
-## I think this is for the 6dof jaco arm
+## Exploring the Jaco 6DOF arm
 state_dim = env.observation_spec()['observations'].shape[0]
 action_dim = env.action_spec().shape[0]
 min_action = float(env.action_spec().minimum[0])
