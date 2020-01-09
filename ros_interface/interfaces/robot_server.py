@@ -25,8 +25,6 @@ class RobotServer():
                     connection.sendall('ack'+rx_data)
                     if rx_data == 'close':
                         print('received close')
-                        #self.server_socket.close()
                         self.connected = False
-                        #connection.close()
 rs = RobotServer()
 
