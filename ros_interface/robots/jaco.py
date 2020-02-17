@@ -22,6 +22,7 @@ import tf.transformations
 import tf2_ros
 import dynamic_reconfigure.server
 from jaco_control.cfg import controller_gainsConfig
+from base import BaseRobot, BaseConfig
 
 # ROS messages and services
 from std_msgs.msg import Float64, Header
@@ -37,54 +38,7 @@ from jaco_control.msg import InteractionParams
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
 
-class Config():
-    def __init__(self):
-        pass
-
-    def load_yml_config(self, config_path):
-        """
-        load dict of user-defined variables from config file
-        """
-        import yaml
-        with open(config_path, 'r') as ymlfile:
-            self.cfg = yaml.load(ymlfile)
-        self.define_config_dependent_variables()
-
-    def define_config_dependent_variables(self):
-        """
-        robot specific variables
-        """
-
-    def verify_config(self):
-        """
-        sanity check config file to ensure that all params are valid
-        """
-        return True
-
-class Robot():
-    def __init__(self, config):
-        self.state = config.empty_state
-        pass
-
-    def reset(self):
-        return self.get_state()
-
-    def step(self, action):
-        return self.get_state()
-
-    def get_state(self):
-        return self.state
-
-    def check_config_safety_params(self):
-        """
-        determine if safety parameters specified in config are strong enough
-        """
-        return True
-
-    def check_action_safety(self, action):
-        return action
-
-class JacoConfig(Config):
+class JacoConfig(BaseConfig):
     def __init__(self):
         pass
 
@@ -108,8 +62,7 @@ class JacoConfig(Config):
         self.D = np.diag([self.cfg['velocity_kd_gains']['joint_%d'%n] for n in range(self.n_joints)])
         self.I = 0.0 * np.eye(self.n_joints)
 
-
-class Robot():
+class JacoRobot(BaseRobot):
     """
     This class handles the control of the robot.
     """
@@ -133,8 +86,7 @@ class Robot():
     def reset(self):
         self.home_robot_service()
         # TODO JRH - wait till robot goes home ?
-        self.get_state()
-        return state
+        return self.get_state()
 
     def get_state(self):
         # TODO JRH collate state here as described in mujoco and return

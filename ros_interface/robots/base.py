@@ -12,7 +12,7 @@ import os
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
 
-class Config():
+class BaseConfig():
     def __init__(self):
         pass
 
@@ -36,12 +36,14 @@ class Config():
         """
         return True
 
-class Robot():
-    def __init__(self, config):
+class BaseRobot():
+    def __init__(self, config, robot_server):
         self.state = config.empty_state
+        self.robot_server = robot_server
         pass
 
     def reset(self):
+        # TODO reset
         return self.get_state()
 
     def step(self, action):
@@ -58,4 +60,7 @@ class Robot():
 
     def check_action_safety(self, action):
         return action
+
+    def check_invalid_state(self):
+        return True
 

@@ -1,6 +1,7 @@
 import socket
 import time
 from IPython import embed
+
 class RobotCommunicator():
     def __init__(self, robot_ip="capilano.cim.mcgill.ca", port=10003):
         self.robot_ip = robot_ip
