@@ -3,7 +3,7 @@ import time
 from IPython import embed
 
 class RobotCommunicator():
-    def __init__(self, robot_ip="capilano.cim.mcgill.ca", port=10003):
+    def __init__(self, robot_ip="127.0.0.1", port=9100):
         self.robot_ip = robot_ip
         self.port = port
         self.connected = False
@@ -20,13 +20,15 @@ class RobotCommunicator():
             if not self.connected:
                 time.sleep(1)
 
-    def send(self, data):
+    def send(self, fn, cmd):
+        data = '<|{}**{}|>'.format(fn,cmd)
         print('sending', data)
-        self.tcp_socket.sendall(data)
-        print('rx', self.tcp_socket.recv(1024))
+        self.tcp_socket.send(data.encode())
+        ret_msg = self.tcp_socket.recv(1024).decode()
+        return print('rx', ret_msg)
 
     def disconnect(self):
-        self.send('close')
+        self.send('END', '')
         print('disconnected from {}'.format(self.robot_ip))
         self.tcp_socket.close()
         self.connected = False
@@ -41,11 +43,12 @@ if __name__ == '__main__':
     # >> python robot_server.py # on capilano
     # >> python robot_client.py 132.206.73.29 # on rhys
     import sys
-    server_ip = sys.argv[1]
-    print('attempting to message server on %s - ensure it is running'%server_ip)
-    rc = RobotCommunicator(robot_ip=server_ip)
-    rc.send('stuff')
-    rc.send('stuff1')
-    rc.send('stuff2')
+    #server_ip = sys.argv[1]
+    #print('attempting to message server on %s - ensure it is running'%server_ip)
+    #rc = RobotCommunicator(robot_ip=server_ip)
+    rc = RobotCommunicator()
+    rc.send('ECHO', 'stuff')
+    rc.send('ECHO', 'stuff1')
+    rc.send('ECHO', 'stuff2')
     rc.disconnect()
 

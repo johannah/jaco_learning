@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 # *******************************************************************
+# Modified with permission from :
 # Author: Sahand Rezaei-Shoshtari
 # Oct. 2019
 # Copyright 2019, Sahand Rezaei-Shoshtari, All rights reserved.
@@ -9,7 +10,7 @@
 
 import os
 import numpy as np
-import pybullet
+#import pybullet
 import pid
 import trajectory
 
@@ -28,8 +29,7 @@ from base import BaseRobot, BaseConfig
 from std_msgs.msg import Float64, Header
 from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped, Vector3, Point, Quaternion, Wrench, WrenchStamped
 from sensor_msgs.msg import JointState
-from gazebo_msgs.msg import LinkState, LinkStates
-from gazebo_msgs.srv import SetModelConfiguration
+from gazebo_msgs.msg import LinkState#, LinkStates
 from kinova_msgs.msg import JointVelocity, JointTorque, JointAngles
 from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingersPositionAction, SetFingersPositionGoal
 from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParameters
@@ -94,6 +94,9 @@ class JacoRobot(BaseRobot):
         return state
 
     def init_ros(self):
+        rospy.wait_for_service(self.prefix + '_driver/in/home_arm')
+        self.home_robot_service = rospy.ServiceProxy(self.prefix + '_driver/in/home_arm', HomeArm)
+
         # FLAGS and STATE DESCRIBERS
         self.active_controller = None
         # SUBSCRIBERS
@@ -120,32 +123,10 @@ class JacoRobot(BaseRobot):
         self.tf_Buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_Buffer)
 
-        # SERVICES and ACTIONS
-        # Joint angle client
-        self.joint_angle_client = None
-        # Gripper client
-        self.gripper_client = None
-        # Robot homing service
-        self.home_robot_service = None
-        # Controller switcher service
-        self.set_torque_control_mode_service = None
-        # Torque controller parameters updater
-        self.set_torque_control_parameters_service = None
-        # Set robot configuration in Gazebo
-        self.set_gazebo_config_service = None
-
         # Controllers
         # TODO put these in from the config file
         self.velocity_controller = pid.PID(0., 0., 0., self.n_joints)
-        self.fftorque_controller = pid.PID(0., 0., 0., self.n_joints)
-        self.impedance_controller = pid.PID(0., 0., 0., self.n_joints)
-        self.P_task, self.I_task, self.D_task = None, None, None
-
-        # ROS Parameters
-        self.payload_parameter_server = None
-
-        # Dynamic reconfigure server
-        self.reconfigure_server = dynamic_reconfigure.server.Server(controller_gainsConfig, self.reconfigure_callback)
+        #self.P_task, self.I_task, self.D_task = None, None, None
 
         # Callback data holders
         self.robot_joint_states = JointState()
@@ -162,7 +143,6 @@ class JacoRobot(BaseRobot):
         self.rospack = rospkg.RosPack()
         self.rospack_path = self.rospack.get_path('jaco_control')
         self.description_directory = 'description'
-
         rospy.loginfo("Robot init successful.")
 
     def init_controller(self):
@@ -191,12 +171,8 @@ class JacoRobot(BaseRobot):
         rospy.wait_for_service(self.prefix + '_driver/in/home_arm')
         self.home_robot_service = rospy.ServiceProxy(self.prefix + '_driver/in/home_arm', HomeArm)
 
-        # init payload parameter server
-        self.payload_parameter_server = self.prefix + '_driver/payload'
-
         # init the controllers
         self.init_velocity_controller()
-
         rospy.loginfo("Jaco controller init successful.")
 
     def connect_to_robot(self):
@@ -205,25 +181,24 @@ class JacoRobot(BaseRobot):
         :return: None
         """
         topics = [name for (name, _) in rospy.get_published_topics()]
-
-        if self.prefix + '_driver/out/joint_state' in topics:
-            self.state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/joint_state", JointState, self.receive_joint_state, queue_size=50)
-            self.actual_joint_torque_subscriber = rospy.Subscriber(self.prefix + "_driver/out/actual_joint_torques",
-                                                                   JointAngles, self.receive_actual_joint_torque,
-                                                                   queue_size=50)
-            self.compensated_joint_torque_subscriber = rospy.Subscriber(self.prefix + "_driver/out/compensated_joint_torques",
-                                                                        JointAngles, self.receive_compensated_joint_torque,
-                                                                        queue_size=50)
-            self.end_effector_state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_pose", PoseStamped,
-                                                                  self.receive_end_effector_state, queue_size=50)
-            self.end_effector_wrench_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_wrench",
-                                                                   WrenchStamped, self.receive_end_effector_wrench,
-                                                                   queue_size=50)
-            rospy.loginfo("Connected to the robot")
-
-        else:
+        if self.prefix + '_driver/out/joint_state' not in topics:
             rospy.logerr("COULD NOT connect to the robot.")
             raise
+
+        self.state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/joint_state", JointState, self.receive_joint_state, queue_size=50)
+        self.actual_joint_torque_subscriber = rospy.Subscriber(self.prefix + "_driver/out/actual_joint_torques",
+                                                               JointAngles, self.receive_actual_joint_torque,
+                                                               queue_size=50)
+        self.compensated_joint_torque_subscriber = rospy.Subscriber(self.prefix + "_driver/out/compensated_joint_torques",
+                                                                    JointAngles, self.receive_compensated_joint_torque,
+                                                                    queue_size=50)
+        self.end_effector_state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_pose", PoseStamped,
+                                                              self.receive_end_effector_state, queue_size=50)
+        self.end_effector_wrench_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_wrench",
+                                                               WrenchStamped, self.receive_end_effector_wrench,
+                                                               queue_size=50)
+        rospy.loginfo("Connected to the robot")
+
 
     def receive_joint_state(self, robot_joint_state):
         """
@@ -270,49 +245,6 @@ class JacoRobot(BaseRobot):
         :return: None
         """
         self.compensated_joint_torques = compensated_trq
-
-    def set_gains(self):
-        self.controller.set_gains(self.cfg.P, self.cfg.I, self.cfg.D)
-
-
-    def task_space_to_joint_space(self, matrix, q=None):
-        """
-        Converts a matrix from task space to joint space. if q is provided, the Jacobian is calculated at the specified
-        configuration, otherwise, the Jacobian is computed at the current state of the robot.
-        :param matrix: the matrix in the task space
-        :type matrix: np.array
-        :param q: state of the robot to compute the Jacobian (optional)
-        :type q: list or np.array
-        :return: converted matrix in joint space
-        :rtype: np.array
-        """
-        # compute the jacobian
-        if q is None:
-            q = np.array(self.robot_joint_states.position[0:cfg.self.n_joints])
-        else:
-            q = np.array(q)
-        jacobian = self.compute_jacobian(q)
-
-        return np.matmul(np.matmul(jacobian.transpose(), matrix), jacobian)
-
-    def compensate_gravity(self, torque):
-        """
-        This method subtracts the torques required for gravity compensations. These torques are computed by the API
-        function GetGravityCompensatedTorques and published to a topic.
-        :param torque: actual joint torques including the torques required for gravity compensation
-        :type torque: JointTorque
-        :return: joint torques required for moving the arm
-        :rtype: JointTorque
-        """
-        torque.joint1 = torque.joint1 - (self.actual_joint_torques.joint1 - self.compensated_joint_torques.joint1)
-        torque.joint2 = torque.joint2 - (self.actual_joint_torques.joint2 - self.compensated_joint_torques.joint2)
-        torque.joint3 = torque.joint3 - (self.actual_joint_torques.joint3 - self.compensated_joint_torques.joint3)
-        torque.joint4 = torque.joint4 - (self.actual_joint_torques.joint4 - self.compensated_joint_torques.joint4)
-        torque.joint5 = torque.joint5 - (self.actual_joint_torques.joint5 - self.compensated_joint_torques.joint5)
-        torque.joint6 = torque.joint6 - (self.actual_joint_torques.joint6 - self.compensated_joint_torques.joint6)
-        torque.joint7 = torque.joint7 - (self.actual_joint_torques.joint7 - self.compensated_joint_torques.joint7)
-
-        return torque
 
     def set_active_controller(self, controller):
         """
@@ -429,15 +361,6 @@ class JacoRobot(BaseRobot):
             rospy.logwarn("The gripper action time-out.")
             return None
 
-    def set_payload(self, payload):
-        """
-        Sets the payload of the arm, not to update the parameters using set_torque_control_parameters method.
-        :param payload: the payload of the robot (M, COM_x, COM_y, COM_z)
-        :type payload: list
-        :return: None
-        """
-        rospy.set_param(self.payload_parameter_server, payload)
-
     def home_robot(self):
         """
         Homes the robot by calling the home robot service
@@ -445,8 +368,6 @@ class JacoRobot(BaseRobot):
         """
         # call the homing service
         self.home_robot_service()
-        # TODO JRH - should return something when the robot actually reaches
-        # home
 
     def create_joint_angle_cmd(self, angle):
         """
@@ -465,11 +386,9 @@ class JacoRobot(BaseRobot):
         joint_cmd.angles.joint4 = self.convert_to_degree(angle[3])
         joint_cmd.angles.joint5 = self.convert_to_degree(angle[4])
         joint_cmd.angles.joint6 = self.convert_to_degree(angle[5])
-        if self.n_joints == 6:
-            joint_cmd.angles.joint7 = 0.
-        else:
+        joint_cmd.angles.joint7 = 0.0
+        if self.n_joints == 7:
             joint_cmd.angles.joint7 = self.convert_to_degree(angle[6])
-
         return joint_cmd
 
     def create_joint_velocity_cmd(self, velocity):
@@ -490,11 +409,9 @@ class JacoRobot(BaseRobot):
         joint_cmd.joint4 = self.convert_to_degree(velocity[3])
         joint_cmd.joint5 = self.convert_to_degree(velocity[4])
         joint_cmd.joint6 = self.convert_to_degree(velocity[5])
-        if self.n_joints == 6:
-            joint_cmd.joint7 = 0.
-        else:
+        joint_cmd.joint7 = 0.0
+        if self.n_joints == 7:
             joint_cmd.joint7 = self.convert_to_degree(velocity[6])
-
         return joint_cmd
 
     def send_joint_angle_cmd(self, joint_cmd):
@@ -528,7 +445,6 @@ class JacoRobot(BaseRobot):
         msg.header = self.robot_joint_states.header
         msg.name = self.robot_joint_states.name
         msg.position = q_desired.tolist()
-
         self.desired_joint_position_publisher.publish(msg)
 
     def publish_interaction_params(self, traj):
@@ -558,7 +474,6 @@ class JacoRobot(BaseRobot):
         header = Header(stamp=rospy.Time.now(), frame_id='world')
         pose = Pose(position=self.end_effector_state.pose.position, orientation=self.end_effector_state.pose.orientation)
         msg = PoseStamped(header=header, pose=pose)
-
         self.end_effector_pose_publisher.publish(msg)
 
     def publish_end_effector_twist(self):
