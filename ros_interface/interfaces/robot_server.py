@@ -1,11 +1,9 @@
 import socket
-from srv import reset, step, home
-from msg import
+from ros_interface.srv import reset, step, home
 
 class RobotServer():
-    def __init__(self, port=9100, robot):
+    def __init__(self, port=9100):
         # robot actually talks to the robot function
-        self.robot = robot
         self.port = port
         self.endseq = '|>'
         self.startseq = '<|'
@@ -18,8 +16,7 @@ class RobotServer():
     def setup_ros(self):
         self.service_reset = rospy.ServiceProxy('reset', reset)
         self.service_step = rospy.ServiceProxy('step', step)
-        self.state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/state", JointState,
-                                                 self.receive_joint_state, queue_size=50)
+        #self.state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/state", JointState, self.receive_joint_state, queue_size=50)
 
     def state_callback(self, msg):
         self.state = msg.state
@@ -35,7 +32,7 @@ class RobotServer():
         # todo decode the ros messges here with relevant info
         if fn == 'RESET':
             msg = self.service_reset()
-        elif fn == 'HOME:
+        elif fn == 'HOME':
             msg = self.service_home(cmd)
         elif fn == 'STEP':
             msg = self.service_step(cmd)
