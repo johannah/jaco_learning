@@ -1,6 +1,3 @@
 # reset the robot to a specified state
-int32 x
-int32 y
-int32 z
 ---
 bool success

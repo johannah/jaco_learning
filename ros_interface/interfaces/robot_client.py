@@ -3,7 +3,7 @@ import time
 from IPython import embed
 
 class RobotCommunicator():
-    def __init__(self, robot_ip="127.0.0.1", port=9100):
+    def __init__(self, robot_ip="127.0.0.1", port=9101):
         self.robot_ip = robot_ip
         self.port = port
         self.connected = False
@@ -25,7 +25,8 @@ class RobotCommunicator():
         print('sending', data)
         self.tcp_socket.send(data.encode())
         ret_msg = self.tcp_socket.recv(1024).decode()
-        return print('rx', ret_msg)
+        print('rx', ret_msg)
+        return ret_msg
 
     def disconnect(self):
         self.send('END', '')
@@ -47,8 +48,8 @@ if __name__ == '__main__':
     #print('attempting to message server on %s - ensure it is running'%server_ip)
     #rc = RobotCommunicator(robot_ip=server_ip)
     rc = RobotCommunicator()
-    rc.send('ECHO', 'stuff')
-    rc.send('ECHO', 'stuff1')
-    rc.send('ECHO', 'stuff2')
+    rc.send('RESET', 'True')
+    #rc.send('ECHO', 'stuff1')
+    #rc.send('ECHO', 'stuff2')
     rc.disconnect()
 
