@@ -21,7 +21,7 @@ import tf
 import tf.transformations
 import tf2_ros
 import dynamic_reconfigure.server
-from base import BaseRobot, BaseConfig
+from base import BaseConfig
 
 # ROS messages and services
 from std_msgs.msg import Float64, Header
@@ -36,7 +36,7 @@ from ros_interface.srv import reset, step, home
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
 
-class SimpleJacoRobot(BaseRobot):
+class SimpleJacoRobot():
     """
     This class handles the control of the robot.
     """
@@ -71,8 +71,9 @@ class SimpleJacoRobot(BaseRobot):
 
     def init_ros(self):
         print('init ros')
-        rospy.wait_for_service(self.prefix + '_driver/in/home_arm')
-        self.home_robot_service = rospy.ServiceProxy(self.prefix + '_driver/in/home_arm', HomeArm)
+        self.path_home_arm = self.prefix + '_driver/in/home_arm'
+        rospy.wait_for_service(self.path_home_arm)
+        self.home_robot_service = rospy.ServiceProxy(self.path_home_arm, HomeArm)
 
         # make default services 
         self.server_reset = rospy.Service('reset', reset, self.reset)

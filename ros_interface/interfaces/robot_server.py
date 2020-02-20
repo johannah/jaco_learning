@@ -1,6 +1,6 @@
 import socket
 import rospy
-from ros_interface.srv import reset, step, home
+from ros_interface.srv import reset, step, home, get_state
 import time
 
 class RobotServer():
@@ -13,16 +13,19 @@ class RobotServer():
         self.midseq = '**'
         self.prefix = 'demo'
         self.setup_ros()
+        self.handle_msg('RESET', '')
+        self.handle_msg('GET_STATE', '')
         self.create_server()
 
     def setup_ros(self):
         print('setting up ros')
         #rospy.init_node('interface', anonymous=True)
-        rospy.wait_for_service('reset')
-        self.service_reset = rospy.ServiceProxy('reset', reset)
-        #self.service_home = rospy.ServiceProxy('/j2n7s300_driver/in/home_arm', home)
-        #self.service_step = rospy.ServiceProxy('step', step)
-        #self.state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/state", JointState, self.receive_joint_state, queue_size=50)
+        rospy.wait_for_service('/reset')
+        self.service_reset = rospy.ServiceProxy('/reset', reset)
+        rospy.wait_for_service('/home')
+        self.service_home = rospy.ServiceProxy('/home', home)
+        rospy.wait_for_service('/get_state')
+        self.service_get_state = rospy.ServiceProxy('/get_state', get_state)
         print('finished setting up ros')
 
     def state_callback(self, msg):
@@ -41,6 +44,12 @@ class RobotServer():
         if fn == 'RESET':
             response = self.service_reset()
             msg = str(response.success)
+        elif fn == 'GET_STATE':
+            response = self.service_get_state()
+            msg = str(response)
+        elif fn == 'HOME':
+            response = self.service_home()
+            msg = str(response)
         #elif fn == 'STEP':
         #    msg = self.service_step(cmd)
         #elif fn == 'GETSTATE':

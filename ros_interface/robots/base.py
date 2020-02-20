@@ -36,31 +36,4 @@ class BaseConfig():
         """
         return True
 
-class BaseRobot():
-    def __init__(self, config, robot_server):
-        self.state = config.empty_state
-        self.robot_server = robot_server
-        pass
-
-    def reset(self):
-        # TODO reset
-        return self.get_state()
-
-    def step(self, action):
-        return self.get_state()
-
-    def get_state(self):
-        return self.state
-
-    def check_config_safety_params(self):
-        """
-        determine if safety parameters specified in config are strong enough
-        """
-        return True
-
-    def check_action_safety(self, action):
-        return action
-
-    def check_invalid_state(self):
-        return True
 

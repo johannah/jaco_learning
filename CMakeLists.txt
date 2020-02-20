@@ -65,6 +65,7 @@ add_message_files(
    home.srv
    reset.srv
    step.srv
+   get_state.srv
  )
 
 ## Generate actions in the 'action' folder
