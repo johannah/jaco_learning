@@ -3,7 +3,7 @@ import time
 from IPython import embed
 
 class RobotCommunicator():
-    def __init__(self, robot_ip="127.0.0.1", port=9101):
+    def __init__(self, robot_ip="127.0.0.1", port=9102):
         self.robot_ip = robot_ip
         self.port = port
         self.connected = False

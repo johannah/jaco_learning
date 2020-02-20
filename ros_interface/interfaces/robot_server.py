@@ -4,7 +4,7 @@ from ros_interface.srv import reset, step, home
 import time
 
 class RobotServer():
-    def __init__(self, port=9101):
+    def __init__(self, port=9102):
         # robot actually talks to the robot function
         self.port = port
         self.endseq = '|>'
@@ -17,7 +17,7 @@ class RobotServer():
 
     def setup_ros(self):
         print('setting up ros')
-        rospy.init_node('interface', anonymous=True)
+        #rospy.init_node('interface', anonymous=True)
         rospy.wait_for_service('reset')
         self.service_reset = rospy.ServiceProxy('reset', reset)
         #self.service_home = rospy.ServiceProxy('/j2n7s300_driver/in/home_arm', home)
@@ -57,19 +57,21 @@ class RobotServer():
             print('connected to', client_address)
             self.connected = True
             while self.connected:
-                # every message needs a response before it will send a new
-                # message
-                # TODO - will need to handle large messages eventually, but
-                # leave this for now
-                rx_data = connection.recv(1024)
-                if rx_data:
-                    rx_data = rx_data.decode()
-                    if rx_data.endswith(self.endseq):
-                        fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
-                        ret_msg = self.handle_msg(fn, cmd)
-                        connection.sendall(ret_msg.encode())
+                try:
+                    # every message needs a response before it will send a new
+                    # message
+                    # TODO - will need to handle large messages eventually, but
+                    # leave this for now
+                    rx_data = connection.recv(1024)
+                    if rx_data:
+                        rx_data = rx_data.decode()
+                        if rx_data.endswith(self.endseq):
+                            fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
+                            ret_msg = self.handle_msg(fn, cmd)
+                            connection.sendall(ret_msg.encode())
+                except KeyboardException as e:
+                    break
 
-                else:
-                    time.sleep(.1)
-rs = RobotServer()
+if __name__ == '__main__':
+    rs = RobotServer()
 
