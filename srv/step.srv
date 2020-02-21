@@ -1,7 +1,5 @@
-# step with command
-float64 x 
-float64 y
-float64 z
+# step with velocity command for each joint on robot
+float64[] velocity
 ---
 bool success
 string[] name

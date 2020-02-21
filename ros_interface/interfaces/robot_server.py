@@ -4,7 +4,7 @@ from ros_interface.srv import reset, step, home, get_state
 import time
 
 class RobotServer():
-    def __init__(self, port=9102):
+    def __init__(self, port=9101):
         # robot actually talks to the robot function
         self.port = port
         self.endseq = '|>'
@@ -13,19 +13,22 @@ class RobotServer():
         self.midseq = '**'
         self.prefix = 'demo'
         self.setup_ros()
-        self.handle_msg('RESET', '')
-        self.handle_msg('GET_STATE', '')
         self.create_server()
 
     def setup_ros(self):
         print('setting up ros')
-        #rospy.init_node('interface', anonymous=True)
         rospy.wait_for_service('/reset')
         self.service_reset = rospy.ServiceProxy('/reset', reset)
+        print('setup service: reset')
         rospy.wait_for_service('/home')
         self.service_home = rospy.ServiceProxy('/home', home)
+        print('setup service: home')
         rospy.wait_for_service('/get_state')
         self.service_get_state = rospy.ServiceProxy('/get_state', get_state)
+        print('setup service: get_state')
+        rospy.wait_for_service('/step')
+        self.service_step = rospy.ServiceProxy('/step', step)
+        print('setup service: step')
         print('finished setting up ros')
 
     def state_callback(self, msg):
@@ -39,8 +42,15 @@ class RobotServer():
         self.connected = False
         self.listen()
 
+    #def disconnect(self):
+    #    if self.connected:
+    #        self.server_socket.close()
+    #        self.connected = False
+    #        self.listen()
+
     def handle_msg(self, fn, cmd):
         # todo decode the ros messges here with relevant info
+        msg = 'NOTIMP'
         if fn == 'RESET':
             response = self.service_reset()
             msg = str(response.success)
@@ -50,10 +60,16 @@ class RobotServer():
         elif fn == 'HOME':
             response = self.service_home()
             msg = str(response)
-        #elif fn == 'STEP':
-        #    msg = self.service_step(cmd)
-        #elif fn == 'GETSTATE':
-        #    msg = self.state
+        elif fn == 'STEP':
+            # cmd should be list of floats
+            # check cmd
+            vcmd = [float(x) for x in cmd[1:-1].strip().split(',')]
+            print('sending', vcmd)
+            response = self.service_step(vcmd)
+            msg = str(response)
+        elif fn == 'END':
+            #self.disconnect()
+            msg = 'END'
         else:
             msg = 'NOTIMP'
         ret_msg = self.startseq+'ACK'+fn+self.midseq+msg+self.endseq
@@ -78,9 +94,13 @@ class RobotServer():
                             fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
                             ret_msg = self.handle_msg(fn, cmd)
                             connection.sendall(ret_msg.encode())
-                except KeyboardException as e:
+                    else:
+                        time.sleep(.1)
+                except KeyboardInterrupt as e:
+                    self.server_socket.close()
                     break
 
 if __name__ == '__main__':
+    from IPython import embed
     rs = RobotServer()
 

@@ -40,6 +40,8 @@ from ros_interface.srv import reset, step, home, get_state
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
 
+radians_to_deg = lambda angle: (180. * angle / np.pi)
+
 class JacoConfig(BaseConfig):
     def __init__(self):
         pass
@@ -78,44 +80,14 @@ class JacoRobot():
         rospy.loginfo('waiting for service ---> %s'%self.path_home_arm)
         rospy.wait_for_service(self.path_home_arm)
         self.home_robot_service = rospy.ServiceProxy(self.path_home_arm, HomeArm)
-
-        ## TF Buffer and Listener
-        #self.tf_Buffer = tf2_ros.Buffer()
-        #self.tf_listener = tf2_ros.TransformListener(self.tf_Buffer)
-
-        # Controllers
-        # TODO put these in from the config file
-        #self.velocity_controller = pid.PID(0., 0., 0., self.n_joints)
-        #self.P_task, self.I_task, self.D_task = None, None, None
-
+        # Joint velocity command publisher - send commands to the kinova driver
+        self.path_joint_vel = self.prefix + '_driver/in/joint_velocity'
+        self.joint_velocity_publisher = rospy.Publisher(self.path_joint_vel, 
+                                                        JointVelocity, 
+                                                        queue_size=50)
+ 
         # Callback data holders
         self.robot_joint_state = JointState()
-
-        #self.end_effector_state = LinkState()
-        #self.actual_joint_torques = JointAngles()
-        #self.compensated_joint_torques = JointAngles()
-        #self.end_effector_wrench = Wrench()
-
-        # Directories
-        #self.rospack = rospkg.RosPack()
-        #self.rospack_path = self.rospack.get_path('jaco_control')
-        #self.description_directory = 'description'
-
- 
-#        # init service clients
-#        self.joint_angle_client = actionlib.SimpleActionClient(self.prefix + '_driver/joints_action/joint_angles', ArmJointAnglesAction)
-#        self.joint_angle_client.wait_for_server()
-#        self.gripper_client = actionlib.SimpleActionClient(self.prefix + '_driver/fingers_action/finger_positions', SetFingersPositionAction)
-#        self.gripper_client.wait_for_server()
-
-        # init publishers
-        # Joint velocity command publisher - send commands to the kinova driver
-#        self.joint_velocity_publisher = rospy.Publisher(self.prefix + '_driver/in/joint_velocity', JointVelocity, queue_size=50)
-        # Desired joint position publisher (useful for gain tuning and debugging)
-        #self.desired_joint_position_publisher = rospy.Publisher('/jaco_control/desired_joint_position', JointState, queue_size=50)
-#
-          # init the controllers
-        #self.init_velocity_controller()
         rospy.loginfo("Jaco controller init successful.")
 
     def connect_to_robot(self):
@@ -135,18 +107,6 @@ class JacoRobot():
                                                  self.receive_joint_state, 
                                                  queue_size=50)
 
-         #joint_torque_path = self.prefix + "_driver/out/actual_joint_torques" 
-#        self.actual_joint_torque_subscriber = rospy.Subscriber(joint_torque_path,
-#                                                               JointAngles, self.receive_actual_joint_torque,
-#                                                               queue_size=50)
-#        self.compensated_joint_torque_subscriber = rospy.Subscriber(self.prefix + "_driver/out/compensated_joint_torques",
-#                                                                    JointAngles, self.receive_compensated_joint_torque,
-#                                                                    queue_size=50)
-#        self.end_effector_state_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_pose", PoseStamped,
-#                                                              self.receive_end_effector_state, queue_size=50)
-#        self.end_effector_wrench_subscriber = rospy.Subscriber(self.prefix + "_driver/out/tool_wrench",
-#                                                               WrenchStamped, self.receive_end_effector_wrench,
-#                                                               queue_size=50)
         rospy.loginfo("Connected to the robot")
 
 
@@ -161,213 +121,40 @@ class JacoRobot():
         self.robot_joint_state = robot_joint_state
         self.state_lock.release()
 
-#    def receive_end_effector_state(self, pose):
-#        """
-#        Callback for '/j2n6s300_driver/out/tool_pose'. Sets the pose of the end effector of the real robot. This method
-#        does not compute the twist.
-#        :param pose: end-effector pose
-#        :type pose: PoseStamped
-#        :return: None
-#        """
-#        self.end_effector_state.link_name = self.prefix[1:] + '_end_effector'
-#        self.end_effector_state.pose = pose
-#        self.end_effector_state.reference_frame = 'world'
-#
-#    def receive_end_effector_wrench(self, msg):
-#        """
-#        Callback for '/j2n6s300_driver/out/end/tool_wrench'.
-#        :param msg: end-effector wrench
-#        :return: None
-#        """
-#        self.end_effector_wrench = msg.wrench
-#
-#    def receive_actual_joint_torque(self, actual_trq):
-#        """
-#        Callback for '/prefix_driver/out/actual_joint_torques'.
-#        :param actual_trq: data from the topic
-#        :type actual_trq: JointAngles
-#        :return: None
-#        """
-#        self.actual_joint_torques = actual_trq
-#
-#    def receive_compensated_joint_torque(self, compensated_trq):
-#        """
-#        Callback for '/prefix_driver/out/compensated_joint_torques'.
-#        :param compensated_trq: data from the topic
-#        :return: None
-#        """
-#        self.compensated_joint_torques = compensated_trq
-#
-#    def init_velocity_controller(self):
-#        """
-#        Initializes the velocity controller.
-#        :return: None
-#        """
-#        # TODO JRH - shouldnt this read from our config?
-#        p_gain = 5.0
-#        i_gain = 0.0
-#        d_gain = 1.0
-#        P = p_gain * np.eye(self.n_joints)
-#        I = i_gain * np.eye(self.n_joints)
-#        D = d_gain * np.eye(self.n_joints)
-#        self.velocity_controller = pid.PID(P, I, D, self.n_joints)
-#
-#    def velocity_control(self, traj, sleep_time=10.):
-#        """
-#        NOTE: Only works on the real robot.
-#        Controls the robot through the waypoints with velocity controller. Note that this actually controls the joint
-#        position but through velocity commands. The velocity commands are sent to low level controllers on the robot.
-#        :param traj: trajectory generated by the Planner class
-#        :type traj: trajectory.Trajectory
-#        :param sleep_time: time to wait for the robot to reach the starting position of the trajectory
-#        :type sleep_time: float or int
-#        :return: None
-#        """
-#
-#        # the publish rate MUST be 100 Hz (Kinova API documentation)
-#        publish_rate = rospy.Rate(100)
-#
-#        # send the robot to starting position
-#        rospy.loginfo("Sending robot to the starting position.")
-#        print(traj.start_pos)
-#        self.set_joint_angle(traj.start_pos)
-#        rospy.sleep(sleep_time)
-#
-#        # tracking time
-#        start_time = rospy.get_time()
-#        elapsed_time = 0.0
-#
-#        rospy.loginfo("Starting velocity controller.")
-#        while elapsed_time < rospy.Duration(traj.total_t).to_sec():
-#            # get the index of the next waypoint
-#            elapsed_time = rospy.get_time() - start_time
-#            index = traj.get_next_waypoint(elapsed_time)
-#            if index >= len(traj.waypoints):
-#                break
-#
-#            # compute the error term and update the PID controller (also deals with angle wraparound problem)
-#            pos = np.array(self.robot_joint_states.position[0:self.n_joints])
-#            error = self.wrap_to_pi(pos) - self.wrap_to_pi(traj.waypoints[index][:])
-#            error = error.reshape((-1, 1))
-#
-#            # only the diagonal elements of the control command matrix is required
-#            cmd = -np.diag(self.velocity_controller.update_PID(error))
-#
-#            # send the joint velocity command to the robot
-#            joint_command = self.create_joint_velocity_cmd(cmd)
-#            self.send_joint_velocity_cmd(joint_command)
-#
-#            # publish desired joint position
-#            self.publish_desired_joint_position(traj.waypoints[index][:])
-#
-#            # maintain the publish rate of 100 Hz
-#            publish_rate.sleep()
-#
-#    def set_joint_angle(self, joint_angles):
-#        """
-#        Set the joint positions on the real robot. Planning is done in the robot base.
-#        :param joint_angles: desired joint positions
-#        :type joint_angles: list or np.array
-#        :return: None
-#        """
-#        # create the joint command
-#        joint_command = self.create_joint_angle_cmd(joint_angles)
-#
-#        # send the joint command to the real robot
-#        self.send_joint_angle_cmd(joint_command)
-#
-#    def set_finger_position(self, finger_positions):
-#        """
-#        Sets the finger positions; the values are in percentage: Fully closed is 100 and fully open is 0.
-#        :param finger_positions: list of the finger positions
-#        :type finger_positions: list
-#        :return: None
-#        """
-#        # convert percentage to thread turn
-#        finger_turns = [x/100.0 * self.MAX_FINGER_TURNS for x in finger_positions]
-#        turns_temp = [max(0.0, x) for x in finger_turns]
-#        finger_turns = [min(x, self.MAX_FINGER_TURNS) for x in turns_temp]
-#
-#        # create and send the goal message
-#        goal = SetFingersPositionGoal()
-#        goal.fingers.finger1 = finger_turns[0]
-#        goal.fingers.finger2 = finger_turns[1]
-#        goal.fingers.finger3 = finger_turns[2]
-#
-#        self.gripper_client.send_goal(goal)
-#
-#        if self.gripper_client.wait_for_server(rospy.Duration(5)):
-#            return self.gripper_client.get_result()
-#        else:
-#            self.gripper_client.cancel_all_goals()
-#            rospy.logwarn("The gripper action time-out.")
-#            return None
-#
-
-    def create_joint_angle_cmd(self, angle):
-        """
-        Creates a joint angle command with the target joint angles. Planning is done in the base of the robot.
-        :param angle: goal position of the waypoint, angles are in radians
-        :type angle: list
-        :return: joint angle command
-        :rtype: ArmJointAnglesGoal
-        """
-        # initialize the command
-        joint_cmd = ArmJointAnglesGoal()
-
-        joint_cmd.angles.joint1 = self.convert_to_degree(angle[0])
-        joint_cmd.angles.joint2 = self.convert_to_degree(angle[1])
-        joint_cmd.angles.joint3 = self.convert_to_degree(angle[2])
-        joint_cmd.angles.joint4 = self.convert_to_degree(angle[3])
-        joint_cmd.angles.joint5 = self.convert_to_degree(angle[4])
-        joint_cmd.angles.joint6 = self.convert_to_degree(angle[5])
-        joint_cmd.angles.joint7 = 0.0
-        if self.n_joints == 7:
-            joint_cmd.angles.joint7 = self.convert_to_degree(angle[6])
-        return joint_cmd
-
     def create_joint_velocity_cmd(self, velocity):
         """
         Creates a joint velocity command with the target velocity for each joint.
-        :param velocity: velocity of each joint in radians/s
+        :param velocity: velocity of each joint in deg/s
         :type velocity: np.array
         :return: joint velocity command
         :rtype: JointVelocity
         """
         # init
+        # TODO - convert to degrees if flagged
+        # deg_vel = [radian_to_deg(x) for x in  velocity]
+        print(velocity)
+        
         velocity = velocity.reshape(-1)
         joint_cmd = JointVelocity()
-
-        joint_cmd.joint1 = self.convert_to_degree(velocity[0])
-        joint_cmd.joint2 = self.convert_to_degree(velocity[1])
-        joint_cmd.joint3 = self.convert_to_degree(velocity[2])
-        joint_cmd.joint4 = self.convert_to_degree(velocity[3])
-        joint_cmd.joint5 = self.convert_to_degree(velocity[4])
-        joint_cmd.joint6 = self.convert_to_degree(velocity[5])
+        joint_cmd.joint1 = velocity[0]
+        joint_cmd.joint2 = velocity[1]
+        joint_cmd.joint3 = velocity[2]
+        joint_cmd.joint4 = velocity[3]
+        joint_cmd.joint5 = velocity[4]
+        joint_cmd.joint6 = velocity[5]
         joint_cmd.joint7 = 0.0
         if self.n_joints == 7:
-            joint_cmd.joint7 = self.convert_to_degree(velocity[6])
+            joint_cmd.joint7 = velocity[6]
         return joint_cmd
 
-    def send_joint_angle_cmd(self, joint_cmd):
-        """
-        Sends the joint angle command to the action server and waits for its execution. Note that the planning is done
-        in the robot base.
-        :param joint_cmd: joint angle command
-        :type joint_cmd: ArmJointAnglesGoal
-        :return: None
-        """
-        self.joint_angle_client.send_goal(joint_cmd)
-        self.joint_angle_client.wait_for_result()
-
-    def send_joint_velocity_cmd(self, joint_cmd):
-        """
-        Publishes the joint velocity command to the robot.
-        :param joint_cmd: desired joint velocities
-        :type joint_cmd: JointVelocity
-        :return: None
-        """
-        self.joint_velocity_publisher.publish(joint_cmd)
+#    def send_joint_velocity_cmd(self, joint_cmd):
+#        """
+#        Publishes the joint velocity command to the robot.
+#        :param joint_cmd: desired joint velocities
+#        :type joint_cmd: JointVelocity
+#        :return: None
+#        """
+#        self.joint_velocity_publisher.publish(joint_cmd)
 
     def shutdown_controller():
         """
@@ -384,6 +171,7 @@ class Jaco(JacoRobot):
         #rospy.init_node('dm_jaco_controller', anonymous=True)
         # state passed in 6dof mujoco has 37 dimensions
         # our 7DOF has 39 dimensions
+        self.n_joints = 7
         self.init_ros()
         self.empty_state = np.zeros((37))
         rospy.loginfo('initiating reset service')
@@ -391,10 +179,14 @@ class Jaco(JacoRobot):
         self.server_reset = rospy.Service('/reset', reset, self.reset)
         self.server_get_state = rospy.Service('/get_state', get_state, self.get_state)
         self.server_home = rospy.Service('/home', home, self.home)
+        self.server_step = rospy.Service('/step', step, self.step)
 
 
-    def get_state(self, msg=None):
-        """ in dm_control for 6dof robot - state is an OrderedDict([
+    def get_state(self, msg=None, success=True):
+        """ :msg is not used - this returns state regardless of message passed in (for service calls)
+            :success bool to indicate if a cmd was successfully executed
+        
+            in dm_control for 6dof robot - state is an OrderedDict([
                    'arm_pos' of shape (9,2) -> jaco_joint_1-6 and jaco_joint_finger1-6 
                    'arm_vel' of shape (9,1)
                    'hand_pos is shape (7,)
@@ -411,17 +203,35 @@ class Jaco(JacoRobot):
             joint_vel.append(self.robot_joint_state.velocity[idx])
             joint_effort.append(self.robot_joint_state.effort[idx])
         self.state_lock.release()
-        return True, name, joint_pos, joint_vel, joint_effort
+        return success, name, joint_pos, joint_vel, joint_effort
 
-    def step(self, cmd=None):
-        action = self.check_action_safety(action)
-        self.create_joint_velocity_cmd(action)
-        return self.get_state()
+    def step(self, cmd):
+        print(cmd)
+        # TODO - should we not use an invalid command or should
+        cmd_vel = np.array(cmd.velocity)
+        print('rx', cmd_vel)
+        if self.check_action_safety(cmd_vel):
+            cmd_vel_msg = self.create_joint_velocity_cmd(cmd_vel)
+            print("SENDING ROBOT")
+            print(cmd_vel_msg)
+            self.joint_velocity_publisher.publish(cmd_vel_msg)
+            print("SUCCESS IN SENDING VELOCITY")
+            return self.get_state(success=True)
+        else:
+            print("FAILURE IN SENDING VELOCITY")
+            return self.get_state(success=False)
 
     def home(self, msg=None):
         print('calling home')
         self.home_robot_service()
  
+    def check_action_safety(self, action):
+        # action in deg/second
+        if action.max() < 15:
+            return True
+        else:
+            return False
+
     def reset(self, msg=None):
         print('calling reset')
         self.home_robot_service()

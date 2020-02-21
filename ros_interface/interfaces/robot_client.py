@@ -3,7 +3,7 @@ import time
 from IPython import embed
 
 class RobotCommunicator():
-    def __init__(self, robot_ip="127.0.0.1", port=9102):
+    def __init__(self, robot_ip="127.0.0.1", port=9101):
         self.robot_ip = robot_ip
         self.port = port
         self.connected = False
@@ -34,7 +34,13 @@ class RobotCommunicator():
         self.tcp_socket.close()
         self.connected = False
 
+def send_step(rc,n=3,step_cmd=[0,0,5,0,0,0,0]):
+    for i in range(n):
+        rc.send("STEP", step_cmd)
+        time.sleep(1/100.)
+ 
 if __name__ == '__main__':
+
     # works when client/server are both on local machine (capilano) 127.0.0.1
     # success test case is:
     # >> python robot_server.py # on capilano
@@ -47,9 +53,10 @@ if __name__ == '__main__':
     #server_ip = sys.argv[1]
     #print('attempting to message server on %s - ensure it is running'%server_ip)
     #rc = RobotCommunicator(robot_ip=server_ip)
-    rc = RobotCommunicator()
-    rc.send('RESET', 'True')
-    #rc.send('ECHO', 'stuff1')
-    #rc.send('ECHO', 'stuff2')
+    #rc.send('RESET', 'True')
+    try:
+        rc = RobotCommunicator()
+    except KeyboardInterrupt:
+        pass
+    embed()
     rc.disconnect()
-
