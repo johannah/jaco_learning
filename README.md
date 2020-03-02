@@ -6,18 +6,18 @@ Standard functions for rl control (such as step() and reset()) are implemented h
 TCP connection and will interface with the appropriate ros services for a particular robot. 
 
 ## Repo Tour:
--- ros_interface
-   -- robots
-     -- jaco.py 
-   -- interfaces
-     -- robot_server.py
-     -- robot_client.py
+-- ros_interface   
+   -- robots    
+     -- jaco.py    
+   -- interfaces  
+     -- robot_server.py   
+     -- robot_client.py   
 
 Robot client serves as an example of how to communicate via standard RL commands to the robot server. To run rl experiment: 
 
-sh launch/kinova_launch.sh
-python ros_interface/robots/jaco.py
-python ros_interface/interfaces/robot_server.py
+`sh launch/kinova_launch.sh`  
+`python ros_interface/robots/jaco.py`  
+`python ros_interface/interfaces/robot_server.py`  
 
 Send tcp cmds and recieve observations as in robot_client.py
 
