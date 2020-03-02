@@ -4,7 +4,7 @@ import numpy as np
 from IPython import embed
 
 class RobotCommunicator():
-    def __init__(self, robot_ip="127.0.0.1", port=9101):
+    def __init__(self, robot_ip="127.0.0.1", port=9100):
         self.robot_ip = robot_ip
         self.port = port
         self.connected = False
@@ -36,13 +36,16 @@ class RobotCommunicator():
         self.connected = False
 
 # How fast can we actually publish commands to the robot
-def run_test_routine(rc):
-    cmd_rate = 50 # hz
-    cmds = np.zeros((100,7))
+def run_test_routine(rc, duration_secs=1):
+    cmd_freq = 50 # hz
+    cmd_rate = 1.0/float(cmd_freq)
+    cmd_steps = int(duration_secs/cmd_rate)
+    cmds = np.zeros((cmd_steps,7))
     # move base clockwise
-    cmds[:30,0] = 10
+    cmds[:,0] = 10 
+    cmds[:,3] = 100 
     # move arm back
-    cmds[30:60,1] = 10
+    #cmds[30:60,1] = 10
     for i in range(cmds.shape[0]):
         rc.send("STEP", list(cmds[i]))
         time.sleep(1/cmd_rate)

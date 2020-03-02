@@ -4,7 +4,7 @@ from ros_interface.srv import reset, step, home, get_state
 import time
 
 class RobotServer():
-    def __init__(self, port=9101):
+    def __init__(self, port=9100):
         # robot actually talks to the robot function
         self.port = port
         self.endseq = '|>'
@@ -42,11 +42,10 @@ class RobotServer():
         self.connected = False
         self.listen()
 
-    #def disconnect(self):
-    #    if self.connected:
-    #        self.server_socket.close()
-    #        self.connected = False
-    #        self.listen()
+    def disconnect(self):
+        if self.connected:
+            self.server_socket.close()
+            self.connected = False
 
     def handle_msg(self, fn, cmd):
         # todo decode the ros messges here with relevant info
@@ -68,7 +67,8 @@ class RobotServer():
             response = self.service_step(vcmd)
             msg = str(response)
         elif fn == 'END':
-            #self.disconnect()
+            self.disconnect()
+            self.create_server()
             msg = 'END'
         else:
             msg = 'NOTIMP'
