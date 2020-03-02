@@ -1,5 +1,6 @@
 import socket
 import time
+import numpy as np
 from IPython import embed
 
 class RobotCommunicator():
@@ -33,6 +34,18 @@ class RobotCommunicator():
         print('disconnected from {}'.format(self.robot_ip))
         self.tcp_socket.close()
         self.connected = False
+
+# How fast can we actually publish commands to the robot
+def run_test_routine(rc):
+    cmd_rate = 50 # hz
+    cmds = np.zeros((100,7))
+    # move base clockwise
+    cmds[:30,0] = 10
+    # move arm back
+    cmds[30:60,1] = 10
+    for i in range(cmds.shape[0]):
+        rc.send("STEP", list(cmds[i]))
+        time.sleep(1/cmd_rate)
 
 def send_step(rc,n=3,step_cmd=[0,0,5,0,0,0,0]):
     for i in range(n):

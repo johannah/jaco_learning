@@ -227,7 +227,7 @@ class Jaco(JacoRobot):
  
     def check_action_safety(self, action):
         # action in deg/second
-        if action.max() < 15:
+        if action.max() < 21:
             return True
         else:
             return False
