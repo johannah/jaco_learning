@@ -7,3 +7,12 @@ TCP connection and will interface with the appropriate ros services for a partic
 
 Jaco components of this repo are based off of [sahandres's jaco_control repo](https://github.com/sahandrez/jaco_control/blob/master/jaco_control/utils/robot.py)
 
+TODO: 
+- handle lab ports  
+- forward images   
+- test reconnect cases  
+- export screen from docker image  
+- ensure that ros log messages are same as mujoco  
+- integrate moveit (so far have only used kinova_demo pose_action_client
+
+

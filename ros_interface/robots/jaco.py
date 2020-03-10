@@ -88,6 +88,14 @@ class JacoRobot():
  
         # Callback data holders
         self.robot_joint_state = JointState()
+        self.path_joint_ang = self.prefix + '_driver/joints_action/joint_angles'
+        self.joint_angle_client = actionlib.SimpleActionClient(self.path_joint_ang, 
+                                                               ArmJointAnglesAction)
+        self.joint_angle_client.wait_for_server()
+        self.path_position_publisher = '/jaco_control/desired_joint_position'
+        self.desired_joint_position_publisher = rospy.ublisher(self.path_position_publisher, 
+                                                JointState, queue_size=50)
+
         rospy.loginfo("Jaco controller init successful.")
 
     def connect_to_robot(self):
@@ -147,14 +155,55 @@ class JacoRobot():
             joint_cmd.joint7 = velocity[6]
         return joint_cmd
 
-#    def send_joint_velocity_cmd(self, joint_cmd):
-#        """
-#        Publishes the joint velocity command to the robot.
-#        :param joint_cmd: desired joint velocities
-#        :type joint_cmd: JointVelocity
-#        :return: None
-#        """
-#        self.joint_velocity_publisher.publish(joint_cmd)
+    def create_joint_angle_cmd(self, angle):
+        """
+        Creates a joint angle command with the target joint angles. 
+        :param angle: goal position of the waypoint, angles are in radians
+        :type angle: list
+        :return: joint angle command
+        :rtype: ArmJointAnglesGoal
+        """
+        # initialize the command
+        joint_cmd = ArmJointAnglesGoal()
+
+        joint_cmd.angles.joint1 = self.convert_to_degree(angle[0])
+        joint_cmd.angles.joint2 = self.convert_to_degree(angle[1])
+        joint_cmd.angles.joint3 = self.convert_to_degree(angle[2])
+        joint_cmd.angles.joint4 = self.convert_to_degree(angle[3])
+        joint_cmd.angles.joint5 = self.convert_to_degree(angle[4])
+        joint_cmd.angles.joint6 = self.convert_to_degree(angle[5])
+        if self.n_joints == 6:
+            joint_cmd.angles.joint7 = 0.
+        else:
+            joint_cmd.angles.joint7 = self.convert_to_degree(angle[6])
+
+        return joint_cmd
+
+    def send_joint_angle_cmd(self, joint_cmd):
+        """
+        Sends the joint angle command to the action server and waits for its execution. Note that the planning is done
+        in the robot base.
+        :param joint_cmd: joint angle command
+        :type joint_cmd: ArmJointAnglesGoal
+        :return: None
+        """
+        self.joint_angle_client.send_goal(joint_cmd)
+        self.joint_angle_client.wait_for_result()
+
+
+    def publish_desired_joint_position(self, q_desired):
+        """
+        Publishes the desired joint position. Useful for gain tuning or debugging.
+        :param q_desired: desired joint position, in a form of [1 x n_joints] 2D array.
+        :type: np.array
+        :return: None
+        """
+        msg = JointState()
+        msg.header = self.robot_joint_states.header
+        msg.name = self.robot_joint_states.name
+        msg.position = q_desired.tolist()
+        self.desired_joint_position_publisher.publish(msg)
+
 
     def shutdown_controller():
         """
