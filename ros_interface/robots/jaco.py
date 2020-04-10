@@ -7,10 +7,23 @@
 # Copyright 2019, Sahand Rezaei-Shoshtari, All rights reserved.
 # *******************************************************************
 # https://github.com/sahandrez/jaco_control
+"""
+origin is the intersection point of the bottom plane of the base and cylinder center line.
++x axis is directing to the left when facing the base panel (where power switch and cable socket locate).
++y axis is towards to user when facing the base panel.
++z axis is upwards when robot is standing on a flat surface.
+
+This is the current joint angle in degrees
+/j2n7s300_driver/out/joint_commdnd
+
+"""
 
 import os
+from copy import copy
 import numpy as np
 import pid
+import time
+import math
 #import trajectory
 import threading
 
@@ -30,11 +43,13 @@ from std_msgs.msg import Float64, Header
 from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped, Vector3, Point, Quaternion, Wrench, WrenchStamped
 from sensor_msgs.msg import JointState
 #from gazebo_msgs.msg import LinkState#, LinkStates
-from kinova_msgs.msg import JointVelocity, JointTorque, JointAngles
-from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingersPositionAction, SetFingersPositionGoal
+from kinova_msgs.msg import JointVelocity, JointTorque, JointAngles, KinovaPose
+from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingersPositionAction, SetFingersPositionGoal, ArmPoseAction, ArmPoseGoal
 from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParameters
-#from jaco_control.msg import InteractionParams
 
+from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion
+#from jaco_control.msg import InteractionParams
+import fence
 from ros_interface.srv import reset, step, home, get_state
 
 # todo - force this to load configuration from file should have safety params
@@ -59,19 +74,21 @@ class JacoConfig(BaseConfig):
     def verify_config(self):
         """ check important parts of the config"""
        # assert num join_configs is the same as the n_joints
-
-    def set_PID(self):
-        # velocity controller gains
-        self.P = np.diag([self.cfg['velocity_kp_gains']['joint_%d'%n] for n in range(self.n_joints)])
-        self.D = np.diag([self.cfg['velocity_kd_gains']['joint_%d'%n] for n in range(self.n_joints)])
-        self.I = 0.0 * np.eye(self.n_joints)
-
+#
+#    def set_PID(self):
+#        # velocity controller gains
+#        self.P = np.diag([self.cfg['velocity_kp_gains']['joint_%d'%n] for n in range(self.n_joints)])
+#        self.D = np.diag([self.cfg['velocity_kd_gains']['joint_%d'%n] for n in range(self.n_joints)])
+#        self.I = 0.0 * np.eye(self.n_joints)
+#
 class JacoRobot():
 
-    def init_ros(self):
+    def init_ros(self, robot_type='j2n7s300', cfg=JacoConfig()):
+        self.request_timeout_secs = 10
         rospy.loginfo('starting init of ros')
         print('starting init of ros')
-        self.prefix = '/j2n7s300'
+        self.robot_type = robot_type
+        self.prefix = '/{}'.format(robot_type)
         rospy.init_node('jaco_controller', anonymous=True)
 
         self.active_controller = 'velocity'
@@ -91,10 +108,14 @@ class JacoRobot():
         self.path_joint_ang = self.prefix + '_driver/joints_action/joint_angles'
         self.joint_angle_client = actionlib.SimpleActionClient(self.path_joint_ang, 
                                                                ArmJointAnglesAction)
-        self.joint_angle_client.wait_for_server()
-        self.path_position_publisher = '/jaco_control/desired_joint_position'
-        self.desired_joint_position_publisher = rospy.ublisher(self.path_position_publisher, 
-                                                JointState, queue_size=50)
+        #self.joint_angle_client.wait_for_server()
+        #self.path_position_publisher = '//desired_joint_position'
+        #self.desired_joint_position_publisher = rospy.Publisher(self.path_position_publisher, 
+        #                                        JointState, queue_size=50)
+        self.tool_pose_requester_address = self.prefix+'_driver/pose_action/tool_pose'
+        self.tool_pose_requester =  actionlib.SimpleActionClient(self.tool_pose_requester_address, 
+                                                                  ArmPoseAction)
+
 
         rospy.loginfo("Jaco controller init successful.")
 
@@ -103,18 +124,35 @@ class JacoRobot():
         Connects to the robot.
         :return: None
         """
+        print('connecting to robot')
         topics = [name for (name, _) in rospy.get_published_topics()]
         if self.prefix + '_driver/out/joint_state' not in topics:
             rospy.logerr("COULD NOT connect to the robot.")
             raise
 
         self.state_lock = threading.Lock()
+        self.joint_state_rcvd = False
         self.path_joint_state = self.prefix + "_driver/out/joint_state"
         self.state_subscriber = rospy.Subscriber(self.path_joint_state, 
                                                  JointState, 
                                                  self.receive_joint_state, 
-                                                 queue_size=50)
+                                                 queue_size=10)
+        self.tool_pose_lock = threading.Lock()
+        while not self.joint_state_rcvd:
+            print("waiting on joint state...")
+            time.sleep(.2)
+        ################################################
+        self.tool_pose_rcvd = False
+        self.tool_pose_out_address = self.prefix + '_driver/out/tool_pose'
 
+        self.tool_pose_subscriber = rospy.Subscriber(self.tool_pose_out_address, 
+                                                     PoseStamped, 
+                                                     self.receive_tool_pose, 
+                                                     queue_size=10)
+
+        while not self.tool_pose_rcvd:
+            print("waiting on tool pose... ")
+            time.sleep(.2)
         rospy.loginfo("Connected to the robot")
 
 
@@ -128,8 +166,151 @@ class JacoRobot():
         self.state_lock.acquire()
         self.robot_joint_state = robot_joint_state
         self.state_lock.release()
+        self.joint_state_rcvd = True
+            
+    def get_tool_pose(self):
+        self.tool_pose_lock.acquire()
+        robot_tool_pose = copy(self.robot_tool_pose)
+        self.tool_pose_lock.release()
+        return robot_tool_pose
 
-    def create_joint_velocity_cmd(self, velocity):
+
+    def receive_tool_pose(self, robot_tool_pose):
+        """
+        tool_pose is constantly updated
+        Callback for '/prefix_driver/out/tool_pose'
+        # in quaternians
+        :param robot_tool_pose: data from topic
+        :type robot_tool_pose kinova_msgs.msg.KinovaPose
+        :return None
+        """
+        self.tool_pose_lock.acquire()
+        self.robot_tool_pose = robot_tool_pose 
+        self.tool_pose_lock.release()
+        self.tool_pose_rcvd = True
+
+    def get_pose(self, unit, relative, position, orientation):
+        """
+        unit: describes the unit of the command - mq:quaternian, mrad:radians, or mdeg:degrees. If mq, 3 position+4 quaternians data are required, otherwise, 3 position + 3 orientation data are required
+        is_relative: bool indicative whether or not the pose command is relative to the current position or absolute
+        position: relative or absolute position and orientation values for XYZ 
+        """
+        # failed: 
+        # when sent testup
+        #('last', [0.25247281789779663, -0.29990264773368835, 0.5781479477882385])
+        #('this', [0.18161669373512268, 0.2771887183189392, 0.7448583841323853])
+
+        assert unit in ['mq', 'mrad', 'mdeg']
+        if unit == 'mq':
+            assert(len(orientation) == 4); "end effector pose in quaternions requires 3 position & 4 orientation values - received {}".format(len(orientation))
+        else:
+            assert(len(orientation) == 3); "end effector pose in rad/deg requires 3 position & 3 orientation values - received {}".format(len(orientation))
+
+        self.tool_pose_lock.acquire()
+        robot_tool_pose = self.robot_tool_pose 
+        self.tool_pose_lock.release()
+        last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+        last_orientation_q = [robot_tool_pose.pose.orientation.x, robot_tool_pose.pose.orientation.y, 
+                            robot_tool_pose.pose.orientation.z, robot_tool_pose.pose.orientation.w]
+ 
+        if relative:
+            # get current orientation
+            # note - in the example, they reference /driver/out/cartesian_command - so it is the last command, not the last position as we are doing here
+            # last_orientation is in radians
+            last_orientation_rad = Quaternion2EulerXYZ(last_orientation_q)
+            position = [last_position[i]+position[i] for i in range(3)]
+        if unit == 'mq':
+            if relative:
+                # current orientation is mq
+                orientation_rad = [last_orientation_rad[i] + Quaternion2EulerXYZ(orientation)[i] for i in range(3)]
+                orientation_q = EulerXYZ2Quaternion(orientation_XYZ_rad)
+            else:
+                orientation_q = orientation
+            orientation_rad = Quaternion2EulerXYZ(orientation_q)
+            orientation_deg = [math.degrees(orientation_rad[i]) for i in range(3)]
+        if unit == 'mrad':
+            if relative:
+                orientation_rad = [last_orientation_rad[i] + orientation[i] for i in range(3)]
+            else:
+                orientation_rad = orientation
+            orientation_q = EulerXYZ2Quaternion(orientation_rad)
+            orientation_deg = [math.degrees(orientation_rad[i]) for i in range(3)]
+        if unit == 'mdeg':
+            if relative:
+                orientation_deg = [math.degrees(last_orientation_rad[i]) + orientation[i] for i in range(3)]
+            else:
+                orientation_deg = orientation
+            orientation_rad = [math.radians(orientation_deg[i]) for i in range(3)]
+            orientation_q = EulerXYZ2Quaternion(orientation_rad)
+        print('last position', last_position)
+        print('position', position)
+        print('last o', last_orientation_q)
+        print('o', orientation_q)
+        return position, orientation_q, orientation_rad, orientation_deg
+
+    def check_target_pose_safety(self, position):
+        print('position', position)
+        x,y,z = position
+        if fence.maxx < x:
+            print('maxx {} < y {}'.format(fence.maxx, x))
+            return 'MAXFENCEX'
+        elif x < fence.minx:
+            print('x {} < miny {}'.format(x, fence.minx))
+            return 'MINFENCEX'
+        elif fence.maxy < y:
+            print('maxy {} < y {}'.format(fence.maxy, y))
+            return 'MAXFENCEY'
+        elif y < fence.miny:
+            print('y {} < miny {}'.format(y, fence.maxy))
+            return 'MINFENCEY'
+        elif fence.maxz < z:
+            print('maxz {} < z {}'.format(fence.maxz, z))
+            return 'MAXFENCEZ'
+        elif z < fence.minz:
+            print('z {} < minz {}'.format(z, fence.maxz))
+            return 'MINFENCEZ'
+        else:
+            return 'SAFE'
+
+    def send_tool_pose_cmd(self, position, orientation_q):
+        #robot_tool_pose = self.get_tool_pose()
+        #last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+ 
+        fence = self.check_target_pose_safety(position)
+        print('fence', fence)
+        if fence == 'SAFE':
+            # based on pose_action_client.py
+            self.tool_pose_requester.wait_for_server()
+            goal = ArmPoseGoal()
+            goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
+            goal.pose.pose.position = Point(x=position[0], y=position[1], z=position[2])
+            goal.pose.pose.orientation = Quaternion(x=orientation_q[0], y=orientation_q[1], z=orientation_q[2], w=orientation_q[3])
+            self.tool_pose_requester.send_goal(goal)
+            print("SUCCESS IN SENDING POSE", position)
+            print(goal)
+            if self.tool_pose_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
+                print('sent successfully')
+                self.tool_pose_requester.get_result()
+                result = 'FINISHED'
+                print("RESULT")
+                print(result)
+                robot_tool_pose = self.get_tool_pose()
+                this_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+                #print("last", last_position)
+                print("this", this_position)
+                success = True
+            else:
+                self.tool_pose_requester.cancel_all_goals()
+                result = 'TIMEOUT' 
+                success = False
+                print("TIMEOUT")
+        else:
+            result = fence
+            success = False
+        return result, success
+
+
+    def send_joint_velocity_cmd(self, velocity):
         """
         Creates a joint velocity command with the target velocity for each joint.
         :param velocity: velocity of each joint in deg/s
@@ -137,12 +318,8 @@ class JacoRobot():
         :return: joint velocity command
         :rtype: JointVelocity
         """
-        # init
-        # TODO - convert to degrees if flagged
-        # deg_vel = [radian_to_deg(x) for x in  velocity]
-        print(velocity)
-        
-        velocity = velocity.reshape(-1)
+        # TODO check safety
+        success = True
         joint_cmd = JointVelocity()
         joint_cmd.joint1 = velocity[0]
         joint_cmd.joint2 = velocity[1]
@@ -153,7 +330,8 @@ class JacoRobot():
         joint_cmd.joint7 = 0.0
         if self.n_joints == 7:
             joint_cmd.joint7 = velocity[6]
-        return joint_cmd
+        self.joint_velocity_publisher.publish(joint_cmd)
+        return 'sent', success
 
     def create_joint_angle_cmd(self, angle):
         """
@@ -252,29 +430,30 @@ class Jaco(JacoRobot):
             joint_vel.append(self.robot_joint_state.velocity[idx])
             joint_effort.append(self.robot_joint_state.effort[idx])
         self.state_lock.release()
-        return success, name, joint_pos, joint_vel, joint_effort
+        return success, msg, name, joint_pos, joint_vel, joint_effort
 
     def step(self, cmd):
         print(cmd)
         # TODO - should we not use an invalid command or should
-        cmd_vel = np.array(cmd.velocity)
-        print('rx', cmd_vel)
-        if self.check_action_safety(cmd_vel):
-            cmd_vel_msg = self.create_joint_velocity_cmd(cmd_vel)
-            print("SENDING ROBOT")
-            print(cmd_vel_msg)
-            self.joint_velocity_publisher.publish(cmd_vel_msg)
-            print("SUCCESS IN SENDING VELOCITY")
-            return self.get_state(success=True)
+        if cmd.type == 'VEL':
+            # velocity command for each joint in deg/sec
+            msg, success = self.send_joint_velocity_cmd(cmd.data)
+            return self.get_state(msg=msg, success=success)
+        if cmd.type == 'POSE':
+            position, orientation_q, orientation_rad, orientation_deg = self.get_pose(cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+            print("SENDING POSITION", position)
+            msg, success = self.send_tool_pose_cmd(position, orientation_q)
+            return self.get_state(msg=msg, success=success)
         else:
-            print("FAILURE IN SENDING VELOCITY")
-            return self.get_state(success=False)
+            raise(NotImplemented)
+
+
 
     def home(self, msg=None):
         print('calling home')
         self.home_robot_service()
  
-    def check_action_safety(self, action):
+    def check_vel_action_safety(self, action):
         # action in deg/second
         if np.abs(action).max() < 200:
             return True

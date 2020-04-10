@@ -62,10 +62,15 @@ class RobotServer():
         elif fn == 'STEP':
             # cmd should be list of floats
             # check cmd
-            vcmd = [float(x) for x in cmd[1:-1].strip().split(',')]
-            print('sending', vcmd)
-            response = self.service_step(vcmd)
+            cvars = [x for x in cmd[1:-1].strip().split(',')]
+            # str
+            ctype = cvars[0]
+            relative = bool(cvars[1])
+            unit = str(cvars[2])
+            data = [float(x) for x in cvars[3:]]
+            response = self.service_step(ctype, relative, unit, data)
             msg = str(response)
+ 
         elif fn == 'END':
             self.disconnect()
             self.create_server()

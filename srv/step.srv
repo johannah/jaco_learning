@@ -1,7 +1,14 @@
 # step with velocity command for each joint on robot
-float64[] velocity
+string type
+# if a velocity command type, data will be joint velocity comannds in degs/sec
+# if pose type, data will be relative or absolute joint position of end effector in mq (position meter, orientation quaternian), mrad, or mdeg units (position meter, orientation Euler-XYZ in degrees or radians)
+# if mq units, 3 position + 4 quaternians are required, otherwise, 3 positions + 3 orientations are required
+bool relative
+string unit
+float64[] data 
 ---
 bool success
+string msg
 string[] name
 float64[] joint_pos
 float64[] joint_vel 

@@ -1,3 +1,5 @@
+import math
+
 def convert_to_degree(angle):
     """
     Converts the input angle to degree.
@@ -23,8 +25,6 @@ def wrap_to_pi(angles):
     phases = (angles + np.pi) % (2 * np.pi) - np.pi
 
     return phases
-
-
 
 
 def compute_idyn_torque(n_joints, q, qdot, qddot):
@@ -124,5 +124,50 @@ def compute_jacobian(pybullet_robot, n_joints, q):
     jacobian = jacobian[:, 0:self.n_joints]
 
     return pybullet_robot, jacobian
+
+# from kinova demo
+def QuaternionNorm(Q_raw):
+    qx_temp,qy_temp,qz_temp,qw_temp = Q_raw[0:4]
+    qnorm = math.sqrt(qx_temp*qx_temp + qy_temp*qy_temp + qz_temp*qz_temp + qw_temp*qw_temp)
+    qx_ = qx_temp/qnorm
+    qy_ = qy_temp/qnorm
+    qz_ = qz_temp/qnorm
+    qw_ = qw_temp/qnorm
+    Q_normed_ = [qx_, qy_, qz_, qw_]
+    return Q_normed_
+
+
+# from kinova demo
+def Quaternion2EulerXYZ(Q_raw):
+    Q_normed = QuaternionNorm(Q_raw)
+    qx_ = Q_normed[0]
+    qy_ = Q_normed[1]
+    qz_ = Q_normed[2]
+    qw_ = Q_normed[3]
+
+    tx_ = math.atan2((2 * qw_ * qx_ - 2 * qy_ * qz_), (qw_ * qw_ - qx_ * qx_ - qy_ * qy_ + qz_ * qz_))
+    ty_ = math.asin(2 * qw_ * qy_ + 2 * qx_ * qz_)
+    tz_ = math.atan2((2 * qw_ * qz_ - 2 * qx_ * qy_), (qw_ * qw_ + qx_ * qx_ - qy_ * qy_ - qz_ * qz_))
+    EulerXYZ_ = [tx_,ty_,tz_]
+    return EulerXYZ_
+
+
+# from kinova demo
+def EulerXYZ2Quaternion(EulerXYZ_):
+    tx_, ty_, tz_ = EulerXYZ_[0:3]
+    sx = math.sin(0.5 * tx_)
+    cx = math.cos(0.5 * tx_)
+    sy = math.sin(0.5 * ty_)
+    cy = math.cos(0.5 * ty_)
+    sz = math.sin(0.5 * tz_)
+    cz = math.cos(0.5 * tz_)
+
+    qx_ = sx * cy * cz + cx * sy * sz
+    qy_ = -sx * cy * sz + cx * sy * cz
+    qz_ = sx * sy * cz + cx * cy * sz
+    qw_ = -sx * sy * sz + cx * cy * cz
+
+    Q_ = [qx_, qy_, qz_, qw_]
+    return Q_
 
 
