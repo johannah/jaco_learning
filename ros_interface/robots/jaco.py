@@ -251,61 +251,55 @@ class JacoRobot():
     def check_target_pose_safety(self, position):
         print('position', position)
         x,y,z = position
+        fence_result = ''
         if fence.maxx < x:
-            print('maxx {} < y {}'.format(fence.maxx, x))
-            return 'MAXFENCEX'
-        elif x < fence.minx:
-            print('x {} < miny {}'.format(x, fence.minx))
-            return 'MINFENCEX'
-        elif fence.maxy < y:
-            print('maxy {} < y {}'.format(fence.maxy, y))
-            return 'MAXFENCEY'
-        elif y < fence.miny:
-            print('y {} < miny {}'.format(y, fence.maxy))
-            return 'MINFENCEY'
-        elif fence.maxz < z:
-            print('maxz {} < z {}'.format(fence.maxz, z))
-            return 'MAXFENCEZ'
-        elif z < fence.minz:
-            print('z {} < minz {}'.format(z, fence.maxz))
-            return 'MINFENCEZ'
-        else:
-            return 'SAFE'
+            rospy.logwarn('HIT FENCE: maxx of {} < y of {}'.format(fence.maxx, x))
+            x = fence.maxx
+            fence_result+='+MAXFENCEX'
+        if x < fence.minx:
+            rospy.logwarn('HIT FENCE: x of {} < miny {}'.format(x, fence.minx))
+            x = fence.minx
+            fence_result+='+MINFENCEX'
+        if fence.maxy < y:
+            rospy.logwarn('HIT FENCE: maxy of {} < y {}'.format(fence.maxy, y))
+            y = fence.maxy
+            fence_result+='+MAXFENCEY'
+        if y < fence.miny:
+            rospy.logwarn('HIT FENCE: y of {} < miny of {}'.format(y, fence.maxy))
+            y = fence.miny
+            fence_result+='MINFENCEY'
+        if fence.maxz < z:
+            rospy.logwarn('HIT FENCE: maxz of {} < z of {}'.format(fence.maxz, z))
+            z = fence.maxz
+            fence_result+='MAXFENCEZ'
+        if z < fence.minz:
+            rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, fence.maxz))
+            z = fence.minz
+            fence_result+='MINFENCEZ'
+        return [x,y,z], fence_result
 
     def send_tool_pose_cmd(self, position, orientation_q):
         #robot_tool_pose = self.get_tool_pose()
         #last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
  
-        fence = self.check_target_pose_safety(position)
-        print('fence', fence)
-        if fence == 'SAFE':
-            # based on pose_action_client.py
-            self.tool_pose_requester.wait_for_server()
-            goal = ArmPoseGoal()
-            goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
-            goal.pose.pose.position = Point(x=position[0], y=position[1], z=position[2])
-            goal.pose.pose.orientation = Quaternion(x=orientation_q[0], y=orientation_q[1], z=orientation_q[2], w=orientation_q[3])
-            self.tool_pose_requester.send_goal(goal)
-            print("SUCCESS IN SENDING POSE", position)
-            print(goal)
-            if self.tool_pose_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
-                print('sent successfully')
-                self.tool_pose_requester.get_result()
-                result = 'FINISHED'
-                print("RESULT")
-                print(result)
-                robot_tool_pose = self.get_tool_pose()
-                this_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
-                #print("last", last_position)
-                print("this", this_position)
-                success = True
-            else:
-                self.tool_pose_requester.cancel_all_goals()
-                result = 'TIMEOUT' 
-                success = False
-                print("TIMEOUT")
+        position, result = self.check_target_pose_safety(position)
+        # based on pose_action_client.py
+        print("REQUESTING POSE after fence of :", position)
+        self.tool_pose_requester.wait_for_server()
+        goal = ArmPoseGoal()
+        goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
+        goal.pose.pose.position = Point(x=position[0], y=position[1], z=position[2])
+        goal.pose.pose.orientation = Quaternion(x=orientation_q[0], y=orientation_q[1], z=orientation_q[2], w=orientation_q[3])
+        self.tool_pose_requester.send_goal(goal)
+        if self.tool_pose_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
+            self.tool_pose_requester.get_result()
+            result+='+TOOL_POSE_FINISHED'
+            robot_tool_pose = self.get_tool_pose()
+            this_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+            success = True
         else:
-            result = fence
+            self.tool_pose_requester.cancel_all_goals()
+            result += '+TIMEOUT' 
             success = False
         return result, success
 
@@ -443,6 +437,7 @@ class Jaco(JacoRobot):
             position, orientation_q, orientation_rad, orientation_deg = self.get_pose(cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
             print("SENDING POSITION", position)
             msg, success = self.send_tool_pose_cmd(position, orientation_q)
+            print("FINISHED")
             return self.get_state(msg=msg, success=success)
         else:
             raise(NotImplemented)
