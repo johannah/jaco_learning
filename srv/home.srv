@@ -1,6 +1,2 @@
 ---
 bool success
-string[] name
-float64[] joint_pos
-float64[] joint_vel 
-float64[] joint_effort

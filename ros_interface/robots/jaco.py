@@ -217,13 +217,14 @@ class JacoRobot():
             # get current orientation
             # note - in the example, they reference /driver/out/cartesian_command - so it is the last command, not the last position as we are doing here
             # last_orientation is in radians
+            print("rev relative position", position)
             last_orientation_rad = Quaternion2EulerXYZ(last_orientation_q)
             position = [last_position[i]+position[i] for i in range(3)]
         if unit == 'mq':
             if relative:
                 # current orientation is mq
                 orientation_rad = [last_orientation_rad[i] + Quaternion2EulerXYZ(orientation)[i] for i in range(3)]
-                orientation_q = EulerXYZ2Quaternion(orientation_XYZ_rad)
+                orientation_q = EulerXYZ2Quaternion(orientation_rad)
             else:
                 orientation_q = orientation
             orientation_rad = Quaternion2EulerXYZ(orientation_q)
@@ -243,9 +244,9 @@ class JacoRobot():
             orientation_rad = [math.radians(orientation_deg[i]) for i in range(3)]
             orientation_q = EulerXYZ2Quaternion(orientation_rad)
         print('last position', last_position)
-        print('position', position)
-        print('last o', last_orientation_q)
-        print('o', orientation_q)
+        print('req position', position)
+        #print('last o', last_orientation_q)
+        #print('o', orientation_q)
         return position, orientation_q, orientation_rad, orientation_deg
 
     def check_target_pose_safety(self, position):
@@ -253,7 +254,7 @@ class JacoRobot():
         x,y,z = position
         fence_result = ''
         if fence.maxx < x:
-            rospy.logwarn('HIT FENCE: maxx of {} < y of {}'.format(fence.maxx, x))
+            rospy.logwarn('HIT FENCE: maxx of {} is < y of {}'.format(fence.maxx, x))
             x = fence.maxx
             fence_result+='+MAXFENCEX'
         if x < fence.minx:
@@ -261,19 +262,19 @@ class JacoRobot():
             x = fence.minx
             fence_result+='+MINFENCEX'
         if fence.maxy < y:
-            rospy.logwarn('HIT FENCE: maxy of {} < y {}'.format(fence.maxy, y))
+            rospy.logwarn('HIT FENCE: maxy of {} is < y {}'.format(fence.maxy, y))
             y = fence.maxy
             fence_result+='+MAXFENCEY'
         if y < fence.miny:
-            rospy.logwarn('HIT FENCE: y of {} < miny of {}'.format(y, fence.maxy))
+            rospy.logwarn('HIT FENCE: y of {} is  miny of {}'.format(y, fence.miny))
             y = fence.miny
             fence_result+='MINFENCEY'
         if fence.maxz < z:
-            rospy.logwarn('HIT FENCE: maxz of {} < z of {}'.format(fence.maxz, z))
+            rospy.logwarn('HIT FENCE: maxz of {} is < z of {}'.format(fence.maxz, z))
             z = fence.maxz
             fence_result+='MAXFENCEZ'
         if z < fence.minz:
-            rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, fence.maxz))
+            rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, fence.minz))
             z = fence.minz
             fence_result+='MINFENCEZ'
         return [x,y,z], fence_result
@@ -282,9 +283,10 @@ class JacoRobot():
         #robot_tool_pose = self.get_tool_pose()
         #last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
  
+        print("REQUESTING POSE before fence of:", position)
         position, result = self.check_target_pose_safety(position)
         # based on pose_action_client.py
-        print("REQUESTING POSE after fence of :", position)
+        print("REQUESTING POSE after fence of:", position)
         self.tool_pose_requester.wait_for_server()
         goal = ArmPoseGoal()
         goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
@@ -447,6 +449,7 @@ class Jaco(JacoRobot):
     def home(self, msg=None):
         print('calling home')
         self.home_robot_service()
+        return True
  
     def check_vel_action_safety(self, action):
         # action in deg/second

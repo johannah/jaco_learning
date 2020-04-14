@@ -1,5 +1,4 @@
 import fence
-import jaco
 import rospy
 from ros_interface.srv import reset, step, home, get_state
 import time
