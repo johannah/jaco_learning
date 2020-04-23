@@ -84,6 +84,9 @@ class JacoConfig(BaseConfig):
 class JacoRobot():
 
     def init_ros(self, robot_type='j2n7s300', cfg=JacoConfig()):
+        self.state_lock = threading.Lock()
+        self.tool_pose_lock = threading.Lock()
+
         self.request_timeout_secs = 10
         rospy.loginfo('starting init of ros')
         print('starting init of ros')
@@ -130,18 +133,7 @@ class JacoRobot():
             rospy.logerr("COULD NOT connect to the robot.")
             raise
 
-        self.state_lock = threading.Lock()
-        self.joint_state_rcvd = False
-        self.path_joint_state = self.prefix + "_driver/out/joint_state"
-        self.state_subscriber = rospy.Subscriber(self.path_joint_state, 
-                                                 JointState, 
-                                                 self.receive_joint_state, 
-                                                 queue_size=10)
-        self.tool_pose_lock = threading.Lock()
-        while not self.joint_state_rcvd:
-            print("waiting on joint state...")
-            time.sleep(.2)
-        ################################################
+        # tool pose for end effector
         self.tool_pose_rcvd = False
         self.tool_pose_out_address = self.prefix + '_driver/out/tool_pose'
 
@@ -151,8 +143,26 @@ class JacoRobot():
                                                      queue_size=10)
 
         while not self.tool_pose_rcvd:
-            print("waiting on tool pose... ")
-            time.sleep(.2)
+            rospy.loginfo("waiting on tool pose... ")
+            try:
+                time.sleep(.5)
+            except KeyboardInterrupt as e:
+                sys.exit()
+ 
+ 
+        self.joint_state_rcvd = False
+        self.path_joint_state = self.prefix + "_driver/out/joint_state"
+        self.state_subscriber = rospy.Subscriber(self.path_joint_state, 
+                                                 JointState, 
+                                                 self.receive_joint_state, 
+                                                 queue_size=10)
+        while not self.joint_state_rcvd:
+            rospy.loginfo("waiting on joint state...")
+            try:
+                time.sleep(.5)
+            except KeyboardInterrupt as e:
+                sys.exit()
+        ################################################
         rospy.loginfo("Connected to the robot")
 
 
@@ -164,7 +174,20 @@ class JacoRobot():
         :return None
         """
         self.state_lock.acquire()
-        self.robot_joint_state = robot_joint_state
+        # Hacky limit of states
+        self.robot_joint_state = copy(robot_joint_state)
+
+        self.state_trace['n_states']+=1
+        self.state_trace['time_offset'].append(time.time()-self.state_start)
+        self.state_trace['joint_pos'].extend(self.robot_joint_state.position)
+        self.state_trace['joint_vel'].extend(self.robot_joint_state.velocity)
+        self.state_trace['joint_effort'].extend(self.robot_joint_state.effort)
+        robot_tool_pose = self.get_tool_pose()
+        tool_pose  = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z, 
+                      robot_tool_pose.pose.orientation.x, robot_tool_pose.pose.orientation.y, 
+                      robot_tool_pose.pose.orientation.z, robot_tool_pose.pose.orientation.w]
+        self.state_trace['tool_pose'].extend(tool_pose)
+
         self.state_lock.release()
         self.joint_state_rcvd = True
             
@@ -173,7 +196,6 @@ class JacoRobot():
         robot_tool_pose = copy(self.robot_tool_pose)
         self.tool_pose_lock.release()
         return robot_tool_pose
-
 
     def receive_tool_pose(self, robot_tool_pose):
         """
@@ -245,8 +267,6 @@ class JacoRobot():
             orientation_q = EulerXYZ2Quaternion(orientation_rad)
         print('last position', last_position)
         print('req position', position)
-        #print('last o', last_orientation_q)
-        #print('o', orientation_q)
         return position, orientation_q, orientation_rad, orientation_deg
 
     def check_target_pose_safety(self, position):
@@ -254,7 +274,7 @@ class JacoRobot():
         x,y,z = position
         fence_result = ''
         if fence.maxx < x:
-            rospy.logwarn('HIT FENCE: maxx of {} is < y of {}'.format(fence.maxx, x))
+            rospy.logwarn('HIT FENCE: maxx of {} is < x of {}'.format(fence.maxx, x))
             x = fence.maxx
             fence_result+='+MAXFENCEX'
         if x < fence.minx:
@@ -281,7 +301,6 @@ class JacoRobot():
 
     def send_tool_pose_cmd(self, position, orientation_q):
         #robot_tool_pose = self.get_tool_pose()
-        #last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
  
         print("REQUESTING POSE before fence of:", position)
         position, result = self.check_target_pose_safety(position)
@@ -396,6 +415,7 @@ class Jaco(JacoRobot):
         # our 7DOF has 39 dimensions
         self.n_joints = 7
         self.init_ros()
+        self.reset_state_trace()
         self.empty_state = np.zeros((37))
         rospy.loginfo('initiating reset service')
         # instantiate services to be called by dm_wrapper
@@ -404,9 +424,21 @@ class Jaco(JacoRobot):
         self.server_home = rospy.Service('/home', home, self.home)
         self.server_step = rospy.Service('/step', step, self.step)
 
+    def reset_state_trace(self):
+        self.state_lock.acquire()
+        self.state_start = time.time()
+        self. state_trace = {'n_states':0,
+                             'time_offset':[], 
+                             'joint_pos':[], 
+                             'joint_vel':[], 
+                             'joint_effort':[], 
+                             'tool_pose':[]
+                             }
+        self.state_lock.release()
 
-    def get_state(self, msg=None, success=True):
-        """ :msg is not used - this returns state regardless of message passed in (for service calls)
+    def get_state(self, success=True, msg=''):
+        """ 
+            :msg is not used - this returns state regardless of message passed in (for service calls)
             :success bool to indicate if a cmd was successfully executed
         
             in dm_control for 6dof robot - state is an OrderedDict([
@@ -415,36 +447,28 @@ class Jaco(JacoRobot):
                    'hand_pos is shape (7,)
                    'target_pos' is shape (3,)
         """
-        name = []
-        joint_pos = []
-        joint_vel = []
-        joint_effort = []
         self.state_lock.acquire()
-        for (idx, joint_name) in enumerate(self.robot_joint_state.name):
-            name.append(joint_name)
-            joint_pos.append(self.robot_joint_state.position[idx])
-            joint_vel.append(self.robot_joint_state.velocity[idx])
-            joint_effort.append(self.robot_joint_state.effort[idx])
+        st = copy(self.state_trace)
         self.state_lock.release()
-        return success, msg, name, joint_pos, joint_vel, joint_effort
+        return success, msg, [], self.state_trace['time_offset'], self.state_trace['joint_pos'], self.state_trace['joint_vel'], self.state_trace['joint_effort'], self.state_trace['tool_pose']
 
     def step(self, cmd):
-        print(cmd)
         # TODO - should we not use an invalid command or should
         if cmd.type == 'VEL':
             # velocity command for each joint in deg/sec
+            self.reset_state_trace()
             msg, success = self.send_joint_velocity_cmd(cmd.data)
-            return self.get_state(msg=msg, success=success)
+            return self.get_state()
         if cmd.type == 'POSE':
             position, orientation_q, orientation_rad, orientation_deg = self.get_pose(cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
             print("SENDING POSITION", position)
+            # need to store all states
+            self.reset_state_trace()
             msg, success = self.send_tool_pose_cmd(position, orientation_q)
             print("FINISHED")
-            return self.get_state(msg=msg, success=success)
+            return self.get_state(msg=str(position+orientation_q))
         else:
             raise(NotImplemented)
-
-
 
     def home(self, msg=None):
         print('calling home')

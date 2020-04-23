@@ -9,64 +9,74 @@ from IPython import embed
 import rospy
 from ros_interface.srv import reset, step, home, get_state
 
-def scale_sketch_to_workspace(trace, wxmin, wxmax, wymin, wymax):
-    xworkspace = wxmax-wxmin
-    yworkspace = wymax-wymin
-    trace = trace.astype(np.float64)
-    maxx=0; minx=0; maxy=0; miny=0
-    absx=0; absy=0
-    for i in range(len(trace)):
-        absx+=trace[i,0]
-        absy+=trace[i,1]
-        minx = min(minx, absx)
-        miny = min(miny, absy)
-        maxx = max(maxx, absx)
-        maxy = max(maxy, absy)
-    xdiff = maxx-minx
-    ydiff = maxy-miny
-    # scale xdiff/ydiff to be in range of workspace
-    print('diffs', xdiff, ydiff)
-    if xdiff > xworkspace:
-        xscale = xworkspace/float(xdiff)
+def scale_sketch_to_workspace(trace, work_xmin, work_xmax, work_ymin, work_ymax, pen_down, pen_up):
+    n = trace.shape[0]
+    delta_xs = trace[:,0]
+    delta_ys = trace[:,1]
+    true_xs = []
+    true_ys = []
+    x = 0
+    y = 0
+    # find position at each point given delta assuming zero start
+    pens = []
+    for i in range(n):
+        true_xs.append(x)
+        true_ys.append(y)
+        x+=delta_xs[i]
+        y+=delta_ys[i]
+        if trace[i,2]:
+            pens.append(pen_down)
+        else:
+            pens.append(pen_up)
+    true_xs = np.array(true_xs)
+    true_ys = np.array(true_ys)
+    xwork_avail = (work_xmax-work_xmin)
+    ywork_avail = (work_ymax-work_ymin)
+    xwork_sketch = max(true_xs)-min(true_xs)
+    ywork_sketch = max(true_ys)-min(true_ys)
+    # find scale for each dimension
+    if xwork_sketch > xwork_avail:
+        xscale = xwork_avail/float(xwork_sketch)
     else:
-        xscale = xdiff/float(xworkspace)
-    if ydiff > yworkspace:
-        yscale = yworkspace/float(ydiff)
+        xscale = xwork_sketch/float(xwork_avail)
+    if ywork_sketch > ywork_avail:
+        yscale = ywork_avail/float(ywork_sketch)
     else:
-        yscale = ydiff/float(yworkspace)
-    # scale so all strokes are within range
-    #scale = min([xscale, yscale])
-    scale = yscale
-    print('scale', scale)
-    trace[:,0]*=scale
-    trace[:,1]*=scale
-    minx*=scale
-    maxx*=scale
-    miny*=scale
-    maxy*=scale
-    print('ydiff', maxy-miny)
-    print('yworkspace', yworkspace)
-    #trace[:,0]+=wxmin
-    #trace[:,1]+=wymin
-    startx = wxmin+(trace[0,0]-minx)
-    starty = wymin+(trace[0,1]-miny)
-    return trace, startx, starty
+        yscale = ywork_sketch/float(ywork_avail)
+    scaled_xs = true_xs*xscale
+    scaled_ys = true_ys*yscale
+    minx = scaled_xs.min()
+    maxx = scaled_xs.max()
+    miny = scaled_ys.min()
+    maxy = scaled_ys.max()
+    startx = work_xmin-minx
+    starty = work_ymin-miny
+    scaled_xs += startx
+    scaled_ys += starty
+    outtrace = np.array([scaled_xs, scaled_ys, pens]).T
+    assert round(outtrace[:,0].min(), 3) >= work_xmin
+    assert round(outtrace[:,0].max(), 3) <= work_xmax
+    assert round(outtrace[:,1].min(), 3) >= work_ymin
+    assert round(outtrace[:,1].max(), 3) <= work_ymax
+    return outtrace
 
-def plot_trace(trace, xstart, ystart, trace_plot_filepath='fig1.png'):
+def plot_trace(trace, trace_plot_filepath='fig1.png'):
     plt.figure()
     xs = trace[:,0]
     ys = trace[:,1]
     lift_pen = trace[:,2]
-    xi = xstart; yi = ystart
     lifted = lift_pen[0]
-    for stroke in range(len(trace)-1):
-        xii = xi + xs[stroke]
-        yii = yi + ys[stroke]
-        if not lifted:
-            plt.plot([xi,xii], [yi,yii])
-        else:
-            print('not plotting', xi, xii)
-        lifted = lift_pen[stroke]
+    xi = xs[0]
+    yi = ys[0]
+    lifted = 0
+    for stroke in range(1,len(trace)):
+        xii = xs[stroke]
+        yii = ys[stroke]
+        #if not lifted:
+        plt.plot([xi,xii], [yi,yii])
+        #else:
+        #    print('not plotting', xi, xii)
+        lifted = lift_pen[stroke-1]
         xi = xii
         yi = yii
     plt.savefig(trace_plot_filepath)
@@ -92,25 +102,21 @@ class JacoDraw():
         print('setup service: step')
         print('finished setting up ros')
 
-    def draw_trace(self, trace, xstart, ystart, draw_plane=.35):
+    def draw_trace(self, trace):
+        jd.service_home()
+        steps = [] 
+        goals = []
         # orientation with hand pointed down like holding pen
         draw_orientation = [.84, .51, .129, .09]
-        xs = trace[:,0]
-        ys = trace[:,1]
-        lift_pen = trace[:,2]
-        lifted = lift_pen[0] 
         # go to initial point
-        self.service_step('POSE', False, 'mq', [xstart, ystart, draw_plane]+draw_orientation)
-        for stroke in range(1, len(trace)):
-            # sent relative step
-            self.service_step('POSE', True, 'mdeg', [xs[stroke], ys[stroke], 0]+[0,0,0])
-            # raise pen
-            if lift_pen[stroke]:
-                print("lifting pen")
-                self.service_step('POSE', True, 'mdeg', [xs[stroke], ys[stroke], .1]+[0,0,0])
-                if stroke+1 < len(trace):
-                    self.service_step('POSE', True, 'mdeg', [xs[stroke+1], ys[stroke+1], -.1]+[0,0,0])
-                print("putting down pen")
+        for stroke in range(len(trace)):
+            x = trace[stroke,0]
+            y = trace[stroke,1]
+            z = trace[stroke,2]
+            goal = [x, y, z]+draw_orientation
+            goals.append(goal)
+            steps.append(self.service_step('POSE', False, 'mq', goal))
+        return goals, steps
 
  
 if __name__ == '__main__':
@@ -120,18 +126,52 @@ if __name__ == '__main__':
     if not os.path.exists(datadir):
         print('cloning sketchrnn dataset')
         os.system('git clone {}'.format(gitpath))
-    jd = JacoDraw()
     data = np.load(datadir)
     train_data = data['train']
-    for ii in range(len(train_data)):
-        trace = train_data[ii]
-        print(fence.minx, fence.miny)
-        print(fence.maxx, fence.maxy)
+    random_state = np.random.RandomState(22)
+    axes = np.array(['x','y','z'])
+    axes_extents = {
+               'x':(fence.minx, fence.maxx),
+               'y':(fence.miny, fence.maxy), 
+               'z':(fence.minz, fence.maxz)
+               }
 
+    datadir = 'drawings'
+    shuffle_inds = True
+    if not os.path.exists(datadir):
+        os.makedirs(datadir)
+    jd = JacoDraw()
+    trial_num = 1
+    for ii in range(len(train_data)):
+        random_state.shuffle(axes)
+        trace = train_data[ii]
         print("starting new trace {} - sending home".format(ii))
-        jd.service_home()
-        trace,startx,starty = scale_sketch_to_workspace(trace, fence.minx*.8, fence.maxx*.8, fence.miny*.8, fence.maxy*.8)
-        jd.draw_trace(trace, startx, starty)
+        print(axes)
+        axes = list(axes)
+        tx = axes[0]
+        ty = axes[1]
+        tz = axes[2]
+        pen_down = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
+        pen_up = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
+        # order in x,y,z
+        trace = scale_sketch_to_workspace(trace, 
+                                          axes_extents[tx][0]+.01, axes_extents[tx][1]-.01, 
+                                          axes_extents[ty][0]+.01, axes_extents[ty][1]-.01, 
+                                          pen_down, pen_up)
+        inds = np.arange(len(trace))
+        if shuffle_inds:
+            random_state.shuffle(inds)
+
+        bpath = os.path.join(datadir, 'T%02d_%04d'%(trial_num, ii))
+        plot_trace(trace, trace_plot_filepath=bpath+'_pts.png')
+        plot_trace(trace[inds], trace_plot_filepath=bpath+'_shuffled_pts.png')
+        # send to intended axis
+        arm_ind = [axes.index('x'), axes.index('y'), axes.index('z')]
+        arm_trace = trace[inds][:,arm_ind] 
+        goals, steps = jd.draw_trace(arm_trace)
+        np.savez(bpath, axes=axes, inds=inds, trace=trace, steps=steps)
+        if ii > 2:
+            sys.exit()
 
         
         

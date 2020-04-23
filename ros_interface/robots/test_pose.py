@@ -2,6 +2,7 @@ import fence
 import rospy
 from ros_interface.srv import reset, step, home, get_state
 import time
+from IPython import embed
 
 class TestPose():
     def __init__(self):
@@ -63,19 +64,27 @@ class TestPose():
         print('finished setting up ros')
 
     def send_position(self, position, orientation, relative):
-        self.service_step('POSE', relative, 'mdeg', position+orientation)
+        return self.service_step('POSE', relative, 'mdeg', position+orientation)
 
     def check_fence_extremes(self):
+        step_states = []
+        goals = []
+        orientation = [0,0,0]
         for (label, pos) in self.extremes:
             print('moving to extreme {}:, {}'.format(label, pos))
-            self.send_position(position=pos, orientation=[0,0,0], relative=False)
+            goals.append(pos+orientation)
+            step_states.append(self.send_position(position=pos, orientation=orientation, relative=False))
+        return goals, step_states
 
     def check_fence_corners(self):
+        step_states = []
+        goals = []
+        orientation = [0,0,0]
         for (label, pos) in self.corner_extremes:
             print('moving to corner {}:, {}'.format(label, pos))
-            self.send_position(position=pos, orientation=[0,0,0], relative=False)
-            time.sleep(3)
-
+            goals.append(pos+orientation)
+            step_states.append(self.send_position(position=pos, orientation=orientation, relative=False))
+        return goals, step_states
 
     def test_go(self):
         pos = [0.11797773838,
@@ -90,35 +99,8 @@ class TestPose():
         time.sleep(.1)
 
 
-    def test_twist(self):
-        # TODO go to position
-        #joint1: 283.299957275
-        #joint2: 162.709121704
-        #joint3: 0.0044891834259
-        #joint4: 45.9832077026
-        #joint5: 265.231140137
-        #joint6: 257.519989014
-        #joint7: 294.616455078
-        print("test_up")
-        vel = [0, 0, 0, 640, 0, 0, 0]
-        for i in range(100):
-            self.service_step('VEL', False, 'degs', vel)
-            time.sleep(.01)
-
-    def test_rel_up(self):
-        print("test_left")
-        pos = [0.0, 0.0, 0.1, 0, 0, 0]
-        relative = True
-        self.service_step('POSE', relative, 'mdeg', pos)
-        time.sleep(.1)
-
-
-
-
-
-
-
 if __name__ == '__main__':
     testp = TestPose()
-    testp.check_fence_extremes()
-    testp.check_fence_corners()
+    #testp.check_fence_extremes()
+    goals, st = testp.check_fence_corners()
+    embed()
