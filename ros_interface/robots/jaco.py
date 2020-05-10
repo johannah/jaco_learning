@@ -450,7 +450,7 @@ class Jaco(JacoRobot):
         self.state_lock.acquire()
         st = copy(self.state_trace)
         self.state_lock.release()
-        return success, msg, [], self.state_trace['time_offset'], self.state_trace['joint_pos'], self.state_trace['joint_vel'], self.state_trace['joint_effort'], self.state_trace['tool_pose']
+        return success, msg, [], self.state_trace['n_states'], self.state_trace['time_offset'], self.state_trace['joint_pos'], self.state_trace['joint_vel'], self.state_trace['joint_effort'], self.state_trace['tool_pose']
 
     def step(self, cmd):
         # TODO - should we not use an invalid command or should

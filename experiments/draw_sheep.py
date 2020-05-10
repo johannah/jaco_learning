@@ -109,14 +109,32 @@ class JacoDraw():
         # orientation with hand pointed down like holding pen
         draw_orientation = [.84, .51, .129, .09]
         # go to initial point
+        lastx = trace[0,0]
+        lasty = trace[0,1]
+        lastz = trace[0,2]
+        n_states = []; joint_pos = []; joint_vel = []; joint_eff = []
+        msg = []; name = []; to = []; tpos = []
         for stroke in range(len(trace)):
             x = trace[stroke,0]
             y = trace[stroke,1]
             z = trace[stroke,2]
-            goal = [x, y, z]+draw_orientation
-            goals.append(goal)
-            steps.append(self.service_step('POSE', False, 'mq', goal))
-        return goals, steps
+            max_diff = np.max(np.abs([x-lastx, y-lasty, z-lastz]))
+            if max_diff > .2:
+                goal = [np.round(x,2), np.round(y,2), np.round(z,2)]+draw_orientation
+                print('goal', goal)
+                goals.append(goal)
+                ss = self.service_step('POSE', False, 'mq', goal)
+                n_states.append(ss.n_states)
+                joint_pos.append(list(ss.joint_pos))
+                joint_vel.append(list(ss.joint_vel))
+                joint_eff.append(list(ss.joint_effort))
+                msg.append(ss.msg) 
+                to.append(list(ss.time_offset))
+                tpos.append((ss.tool_pos))
+            else:
+                print('not big enough diff', max_diff)
+            lastx = x; lasty = y; lastz = z
+        return goals, np.array(n_states), np.array(joint_pos), np.array(joint_vel), np.array(joint_eff), name, np.array(to), np.array(tpos)
 
  
 if __name__ == '__main__':
@@ -143,38 +161,43 @@ if __name__ == '__main__':
     jd = JacoDraw()
     trial_num = 1
     for ii in range(len(train_data)):
-        random_state.shuffle(axes)
-        trace = train_data[ii]
-        print("starting new trace {} - sending home".format(ii))
-        print(axes)
-        axes = list(axes)
-        tx = axes[0]
-        ty = axes[1]
-        tz = axes[2]
-        pen_down = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
-        pen_up = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
-        # order in x,y,z
-        trace = scale_sketch_to_workspace(trace, 
-                                          axes_extents[tx][0]+.01, axes_extents[tx][1]-.01, 
-                                          axes_extents[ty][0]+.01, axes_extents[ty][1]-.01, 
-                                          pen_down, pen_up)
-        inds = np.arange(len(trace))
-        if shuffle_inds:
-            random_state.shuffle(inds)
-
         bpath = os.path.join(datadir, 'T%02d_%04d'%(trial_num, ii))
-        plot_trace(trace, trace_plot_filepath=bpath+'_pts.png')
-        plot_trace(trace[inds], trace_plot_filepath=bpath+'_shuffled_pts.png')
-        # send to intended axis
-        arm_ind = [axes.index('x'), axes.index('y'), axes.index('z')]
-        arm_trace = trace[inds][:,arm_ind] 
-        goals, steps = jd.draw_trace(arm_trace)
-        np.savez(bpath, axes=axes, inds=inds, trace=trace, steps=steps)
-        if ii > 2:
-            sys.exit()
-
-        
-        
-
-
-
+        print(bpath)
+        if os.path.exists(bpath+'.npz'):
+            print("skipping trace {} - {} already exists".format(ii, bpath+'.npz'))
+        else:
+            print("--------------starting-------------")
+            random_state.shuffle(axes)
+            trace = train_data[ii]
+            print("starting new trace {} - sending home".format(ii))
+            print(axes)
+            axes = list(axes)
+            tx = axes[0]
+            ty = axes[1]
+            tz = axes[2]
+            pen_down = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
+            pen_up = ((axes_extents[tz][1]-axes_extents[tz][0])/2.0)+axes_extents[tz][0]
+            # order in x,y,z
+            trace = scale_sketch_to_workspace(trace, 
+                                              axes_extents[tx][0]+.01, axes_extents[tx][1]-.01, 
+                                              axes_extents[ty][0]+.01, axes_extents[ty][1]-.01, 
+                                              pen_down, pen_up)
+            inds = np.arange(len(trace))
+            if shuffle_inds:
+                random_state.shuffle(inds)
+    
+            plot_trace(trace, trace_plot_filepath=bpath+'_pts.png')
+            plot_trace(trace[inds], trace_plot_filepath=bpath+'_shuffled_pts.png')
+            # send to intended axis
+            arm_ind = [axes.index('x'), axes.index('y'), axes.index('z')]
+            arm_trace = trace[inds][:,arm_ind] 
+            goals, n_states, joint_pos, joint_vel, joint_eff, name, to, tpos = jd.draw_trace(arm_trace)
+            print("--------------saving------------", bpath)
+            np.savez(bpath, goals=goals, n_states=n_states, joint_pos=joint_pos, joint_vel=joint_vel, 
+                    joint_eff=joint_eff, name=name, time_offset=to, tool_pos=tpos)
+    
+            
+            
+    
+    
+    
