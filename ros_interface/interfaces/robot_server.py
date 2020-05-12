@@ -4,14 +4,14 @@ from ros_interface.srv import reset, step, home, get_state
 import time
 
 class RobotServer():
-    def __init__(self, port=9100):
+    def __init__(self, port=9030):
         # robot actually talks to the robot function
         self.port = port
         self.endseq = '|>'
         self.startseq = '<|'
         # between function call and data
         self.midseq = '**'
-        self.prefix = 'demo'
+        rospy.init_node('robot_server')
         self.setup_ros()
         self.create_server()
 
@@ -35,9 +35,10 @@ class RobotServer():
         self.state = msg.state
 
     def create_server(self):
-        print('starting server')
+        print('starting server at %s'%self.port)
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind(('localhost', self.port))
+        # 0.0.0.0 will accept from any address - makes this work on docker 
+        self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(1)
         self.connected = False
         self.listen()
@@ -49,7 +50,10 @@ class RobotServer():
 
     def handle_msg(self, fn, cmd):
         # todo decode the ros messges here with relevant info
+        fn = fn.upper()
         msg = 'NOTIMP'
+        print("handling fn: {}".format(fn))
+        print("cmd is:{}".format(cmd))
         if fn == 'RESET':
             response = self.service_reset()
             msg = str(response.success)
@@ -61,17 +65,17 @@ class RobotServer():
             msg = str(response)
         elif fn == 'STEP':
             # cmd should be list of floats
-            # check cmd
-            cvars = [x for x in cmd[1:-1].strip().split(',')]
-            # str
+            cvars = [x for x in cmd.strip().split(',')]
             ctype = cvars[0]
             relative = bool(cvars[1])
             unit = str(cvars[2])
-            data = [float(x) for x in cvars[3:]]
+            data = cvars[3:]
+            data = [float(x) for x in data]
             response = self.service_step(ctype, relative, unit, data)
             msg = str(response)
- 
         elif fn == 'END':
+            # this is just used for the local server and won't be sent to jaco
+            # TODO maybe it should be used to stop ros processes and shutdown ....
             self.disconnect()
             self.create_server()
             msg = 'END'
@@ -94,11 +98,14 @@ class RobotServer():
                     # leave this for now
                     rx_data = connection.recv(1024)
                     if rx_data:
-                        rx_data = rx_data.decode()
+                        rx_data = rx_data.decode().strip()
+                        print("rx", rx_data)
                         if rx_data.endswith(self.endseq):
                             fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
                             ret_msg = self.handle_msg(fn, cmd)
                             connection.sendall(ret_msg.encode())
+                        else:
+                            print(rx_data, 'does not end with', self.endseq)
                     else:
                         time.sleep(.1)
                 except KeyboardInterrupt as e:

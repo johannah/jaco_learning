@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 def convert_to_degree(angle):
     """
@@ -129,11 +130,15 @@ def compute_jacobian(pybullet_robot, n_joints, q):
 def QuaternionNorm(Q_raw):
     qx_temp,qy_temp,qz_temp,qw_temp = Q_raw[0:4]
     qnorm = math.sqrt(qx_temp*qx_temp + qy_temp*qy_temp + qz_temp*qz_temp + qw_temp*qw_temp)
-    qx_ = qx_temp/qnorm
-    qy_ = qy_temp/qnorm
-    qz_ = qz_temp/qnorm
-    qw_ = qw_temp/qnorm
-    Q_normed_ = [qx_, qy_, qz_, qw_]
+    if np.abs(qnorm) > 0:
+        qx_ = qx_temp/qnorm
+        qy_ = qy_temp/qnorm
+        qz_ = qz_temp/qnorm
+        qw_ = qw_temp/qnorm
+        Q_normed_ = [qx_, qy_, qz_, qw_]
+    else:
+        print("unable to use 0 qnorm")
+        Q_normed_ = Q_raw[0:4] 
     return Q_normed_
 
 

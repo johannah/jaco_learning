@@ -485,20 +485,7 @@ class Jaco(JacoRobot):
     def reset(self, msg=None):
         print('calling reset')
         self.home_robot_service()
-        # home position looks like
-        #name: [ j2n7s300_joint_1, j2n7s300_joint_2, j2n7s300_joint_3, 
-        #        j2n7s300_joint_4, j2n7s300_joint_5, j2n7s300_joint_6, j2n7s300_joint_7, 
-        #      j2n7s300_joint_finger_1, j2n7s300_joint_finger_2, j2n7s300_joint_finger_3, 
-        #      j2n7s300_joint_finger_tip_1, j2n7s300_joint_finger_tip_2, j2n7s300_joint_finger_tip_3]
-        #      position: [4.708371868196414, 2.6192210626218024, 0.0009016398446646594, 
-        #                 0.5213664806830808, -0.004190159922630479, 3.7136391231065957, 9.430082977660817, 
-        #                 1.108797407149339, 1.108797407149339, 1.1100294042683936, 0.0, 0.0, 0.0]
-        #      velocity: [-0.007791646811650356, -0.007791648892244958, -4.891454401121671e-47, 
-        #          -0.007791648892244958, 4.891454401121671e-47, -0.011333306723049174, -0.011333306723049174, 
-        #                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        #      effort: [0.38293781876564026, 1.250989317893982, 0.7754424810409546, 
-        #            6.08735466003418, 0.2894153892993927, -1.0226423740386963, -0.01134837232530117, 
-        #             0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        # TODO - reset should take a goto message and use the controller to go to a particular position
         # this function does not return until the arm has reached the home position
         return self.get_state()
     
