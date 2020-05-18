@@ -14,7 +14,7 @@ origin is the intersection point of the bottom plane of the base and cylinder ce
 +z axis is upwards when robot is standing on a flat surface.
 
 This is the current joint angle in degrees
-/j2n7s300_driver/out/joint_commdnd
+/j2n7s300_driver/out/joint_command
 
 """
 
@@ -47,7 +47,7 @@ from kinova_msgs.msg import JointVelocity, JointTorque, JointAngles, KinovaPose
 from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingersPositionAction, SetFingersPositionGoal, ArmPoseAction, ArmPoseGoal
 from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParameters
 
-from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion
+from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion, trim_target_pose_safety
 #from jaco_control.msg import InteractionParams
 import fence
 from ros_interface.srv import reset, step, home, get_state
@@ -74,13 +74,7 @@ class JacoConfig(BaseConfig):
     def verify_config(self):
         """ check important parts of the config"""
        # assert num join_configs is the same as the n_joints
-#
-#    def set_PID(self):
-#        # velocity controller gains
-#        self.P = np.diag([self.cfg['velocity_kp_gains']['joint_%d'%n] for n in range(self.n_joints)])
-#        self.D = np.diag([self.cfg['velocity_kd_gains']['joint_%d'%n] for n in range(self.n_joints)])
-#        self.I = 0.0 * np.eye(self.n_joints)
-#
+
 class JacoRobot():
 
     def init_ros(self, robot_type='j2n7s300', cfg=JacoConfig()):
@@ -89,7 +83,6 @@ class JacoRobot():
 
         self.request_timeout_secs = 10
         rospy.loginfo('starting init of ros')
-        print('starting init of ros')
         self.robot_type = robot_type
         self.prefix = '/{}'.format(robot_type)
         rospy.init_node('jaco_controller', anonymous=True)
@@ -108,13 +101,10 @@ class JacoRobot():
  
         # Callback data holders
         self.robot_joint_state = JointState()
-        self.path_joint_ang = self.prefix + '_driver/joints_action/joint_angles'
-        self.joint_angle_client = actionlib.SimpleActionClient(self.path_joint_ang, 
+
+        self.joint_angle_requester_address = self.prefix + '_driver/joints_action/joint_angles'
+        self.joint_angle_requester = actionlib.SimpleActionClient(self.path_joint_ang, 
                                                                ArmJointAnglesAction)
-        #self.joint_angle_client.wait_for_server()
-        #self.path_position_publisher = '//desired_joint_position'
-        #self.desired_joint_position_publisher = rospy.Publisher(self.path_position_publisher, 
-        #                                        JointState, queue_size=50)
         self.tool_pose_requester_address = self.prefix+'_driver/pose_action/tool_pose'
         self.tool_pose_requester =  actionlib.SimpleActionClient(self.tool_pose_requester_address, 
                                                                   ArmPoseAction)
@@ -211,102 +201,58 @@ class JacoRobot():
         self.tool_pose_lock.release()
         self.tool_pose_rcvd = True
 
-    def get_pose(self, unit, relative, position, orientation):
-        """
-        unit: describes the unit of the command - mq:quaternian, mrad:radians, or mdeg:degrees. If mq, 3 position+4 quaternians data are required, otherwise, 3 position + 3 orientation data are required
-        is_relative: bool indicative whether or not the pose command is relative to the current position or absolute
-        position: relative or absolute position and orientation values for XYZ 
-        """
-        # failed: 
-        # when sent testup
-        #('last', [0.25247281789779663, -0.29990264773368835, 0.5781479477882385])
-        #('this', [0.18161669373512268, 0.2771887183189392, 0.7448583841323853])
-
-        assert unit in ['mq', 'mrad', 'mdeg']
-        if unit == 'mq':
-            assert(len(orientation) == 4); "end effector pose in quaternions requires 3 position & 4 orientation values - received {}".format(len(orientation))
-        else:
-            assert(len(orientation) == 3); "end effector pose in rad/deg requires 3 position & 3 orientation values - received {}".format(len(orientation))
-
-        self.tool_pose_lock.acquire()
-        robot_tool_pose = self.robot_tool_pose 
-        self.tool_pose_lock.release()
-        last_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
-        last_orientation_q = [robot_tool_pose.pose.orientation.x, robot_tool_pose.pose.orientation.y, 
-                            robot_tool_pose.pose.orientation.z, robot_tool_pose.pose.orientation.w]
- 
-        if relative:
-            # get current orientation
-            # note - in the example, they reference /driver/out/cartesian_command - so it is the last command, not the last position as we are doing here
-            # last_orientation is in radians
-            print("rev relative position", position)
-            last_orientation_rad = Quaternion2EulerXYZ(last_orientation_q)
-            position = [last_position[i]+position[i] for i in range(3)]
-        if unit == 'mq':
-            if relative:
-                # current orientation is mq
-                orientation_rad = [last_orientation_rad[i] + Quaternion2EulerXYZ(orientation)[i] for i in range(3)]
-                orientation_q = EulerXYZ2Quaternion(orientation_rad)
-            else:
-                orientation_q = orientation
-            orientation_rad = Quaternion2EulerXYZ(orientation_q)
-            orientation_deg = [math.degrees(orientation_rad[i]) for i in range(3)]
-        if unit == 'mrad':
-            if relative:
-                orientation_rad = [last_orientation_rad[i] + orientation[i] for i in range(3)]
-            else:
-                orientation_rad = orientation
-            orientation_q = EulerXYZ2Quaternion(orientation_rad)
-            orientation_deg = [math.degrees(orientation_rad[i]) for i in range(3)]
-        if unit == 'mdeg':
-            if relative:
-                orientation_deg = [math.degrees(last_orientation_rad[i]) + orientation[i] for i in range(3)]
-            else:
-                orientation_deg = orientation
-            orientation_rad = [math.radians(orientation_deg[i]) for i in range(3)]
-            orientation_q = EulerXYZ2Quaternion(orientation_rad)
-        print('last position', last_position)
-        print('req position', position)
-        return position, orientation_q, orientation_rad, orientation_deg
-
-    def check_target_pose_safety(self, position):
-        print('position', position)
-        x,y,z = position
-        fence_result = ''
-        if fence.maxx < x:
-            rospy.logwarn('HIT FENCE: maxx of {} is < x of {}'.format(fence.maxx, x))
-            x = fence.maxx
-            fence_result+='+MAXFENCEX'
-        if x < fence.minx:
-            rospy.logwarn('HIT FENCE: x of {} < miny {}'.format(x, fence.minx))
-            x = fence.minx
-            fence_result+='+MINFENCEX'
-        if fence.maxy < y:
-            rospy.logwarn('HIT FENCE: maxy of {} is < y {}'.format(fence.maxy, y))
-            y = fence.maxy
-            fence_result+='+MAXFENCEY'
-        if y < fence.miny:
-            rospy.logwarn('HIT FENCE: y of {} is  miny of {}'.format(y, fence.miny))
-            y = fence.miny
-            fence_result+='MINFENCEY'
-        if fence.maxz < z:
-            rospy.logwarn('HIT FENCE: maxz of {} is < z of {}'.format(fence.maxz, z))
-            z = fence.maxz
-            fence_result+='MAXFENCEZ'
-        if z < fence.minz:
-            rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, fence.minz))
-            z = fence.minz
-            fence_result+='MINFENCEZ'
-        return [x,y,z], fence_result
-
     def send_tool_pose_cmd(self, position, orientation_q):
         #robot_tool_pose = self.get_tool_pose()
  
         print("REQUESTING POSE before fence of:", position)
-        position, result = self.check_target_pose_safety(position)
+        position, result = trim_target_pose_safety(position)
         # based on pose_action_client.py
         print("REQUESTING POSE after fence of:", position)
+        # TODO - does wait_for_server belong here or when it is defined?
         self.tool_pose_requester.wait_for_server()
+        goal = ArmPoseGoal()
+        goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
+        goal.pose.pose.position = Point(x=position[0], y=position[1], z=position[2])
+        goal.pose.pose.orientation = Quaternion(x=orientation_q[0], y=orientation_q[1], z=orientation_q[2], w=orientation_q[3])
+        self.tool_pose_requester.send_goal(goal)
+        if self.tool_pose_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
+            self.tool_pose_requester.get_result()
+            result+='+TOOL_POSE_FINISHED'
+            robot_tool_pose = self.get_tool_pose()
+            this_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+            success = True
+        else:
+            self.tool_pose_requester.cancel_all_goals()
+            result += '+TIMEOUT' 
+            success = False
+        return result, success
+
+
+    def send_joint_angle_cmd(self, joint_angles_degrees):
+        """
+        create joint target pose to send to the controller
+        Sends the joint angle command to the action server and waits for its execution. 
+        Note that the planning is done in the robot base.
+        """
+        # TODO add safety planner
+        #joint_angles_degrees, result = self.check_target_pose_safety(joint_angles_degrees)
+        joint_cmd = ArmJointAnglesGoal()
+        [eval('joint_cmd.angles.joint%d'%n)=joint_angles_degrees[n] for n in len(joint_angles_degrees)]
+        self.joint_angle_requester.send_goal(joint_cmd)
+
+        if self.joint_angle_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
+            self.joint_angle_requester.get_result()
+            result+='+JOINT_ANGLE_FINISHED'
+            robot_joint_angles = self.get_joint_angles()
+            #this_position = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z]
+            success = True
+        else:
+            self.joint_angle_requester.cancel_all_goals()
+            result += '+TIMEOUT' 
+            success = False
+        return result, success
+
+
         goal = ArmPoseGoal()
         goal.pose.header = Header(frame_id=(self.prefix+'_link_base'))
         goal.pose.pose.position = Point(x=position[0], y=position[1], z=position[2])
@@ -347,55 +293,6 @@ class JacoRobot():
             joint_cmd.joint7 = velocity[6]
         self.joint_velocity_publisher.publish(joint_cmd)
         return 'sent', success
-
-    def create_joint_angle_cmd(self, angle):
-        """
-        Creates a joint angle command with the target joint angles. 
-        :param angle: goal position of the waypoint, angles are in radians
-        :type angle: list
-        :return: joint angle command
-        :rtype: ArmJointAnglesGoal
-        """
-        # initialize the command
-        joint_cmd = ArmJointAnglesGoal()
-
-        joint_cmd.angles.joint1 = self.convert_to_degree(angle[0])
-        joint_cmd.angles.joint2 = self.convert_to_degree(angle[1])
-        joint_cmd.angles.joint3 = self.convert_to_degree(angle[2])
-        joint_cmd.angles.joint4 = self.convert_to_degree(angle[3])
-        joint_cmd.angles.joint5 = self.convert_to_degree(angle[4])
-        joint_cmd.angles.joint6 = self.convert_to_degree(angle[5])
-        if self.n_joints == 6:
-            joint_cmd.angles.joint7 = 0.
-        else:
-            joint_cmd.angles.joint7 = self.convert_to_degree(angle[6])
-
-        return joint_cmd
-
-    def send_joint_angle_cmd(self, joint_cmd):
-        """
-        Sends the joint angle command to the action server and waits for its execution. Note that the planning is done
-        in the robot base.
-        :param joint_cmd: joint angle command
-        :type joint_cmd: ArmJointAnglesGoal
-        :return: None
-        """
-        self.joint_angle_client.send_goal(joint_cmd)
-        self.joint_angle_client.wait_for_result()
-
-
-    def publish_desired_joint_position(self, q_desired):
-        """
-        Publishes the desired joint position. Useful for gain tuning or debugging.
-        :param q_desired: desired joint position, in a form of [1 x n_joints] 2D array.
-        :type: np.array
-        :return: None
-        """
-        msg = JointState()
-        msg.header = self.robot_joint_states.header
-        msg.name = self.robot_joint_states.name
-        msg.position = q_desired.tolist()
-        self.desired_joint_position_publisher.publish(msg)
 
 
     def shutdown_controller():
@@ -459,14 +356,25 @@ class Jaco(JacoRobot):
             self.reset_state_trace()
             msg, success = self.send_joint_velocity_cmd(cmd.data)
             return self.get_state()
-        if cmd.type == 'POSE':
-            position, orientation_q, orientation_rad, orientation_deg = self.get_pose(cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+        if cmd.type == 'TOOLPOSE':
+            current_tool_pose = self.get_tool_pose()
+            position, orientation_q, orientation_rad, orientation_deg = self.convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
             print("SENDING POSITION", position)
             # need to store all states
             self.reset_state_trace()
             msg, success = self.send_tool_pose_cmd(position, orientation_q)
             print("FINISHED")
             return self.get_state(msg=str(position+orientation_q))
+        if cmd.type == 'JOINTANGLE':
+            current_tool_pose = self.get_tool_pose()
+            position, orientation_q, orientation_rad, orientation_deg = self.convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+            print("SENDING POSITION", position)
+            # need to store all states
+            self.reset_state_trace()
+            msg, success = self.send_tool_pose_cmd(position, orientation_q)
+            print("FINISHED")
+            return self.get_state(msg=str(position+orientation_q))
+ 
         else:
             raise(NotImplemented)
 
