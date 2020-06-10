@@ -1,6 +1,5 @@
 import math
 import numpy as np
-import fence
 
 def convert_to_degree(angle):
     """
@@ -130,7 +129,7 @@ def convert_tool_pose(current_tool_pose, unit, relative, position, orientation):
         orientation_q = EulerXYZ2Quaternion(orientation_rad)
     return position, orientation_q, orientation_rad, orientation_deg
 
-def convert_joint_position(current_degree_joint_position, unit, relative, target_joint_position):
+def convert_joint_angles(current_degree_joint_position, unit, relative, target_joint_position):
     """
     unit: describes the unit of the command - must be 'deg' or 'rad' 
     is_relative: bool indicative whether or not the pose command is relative to the current position or absolute
@@ -155,35 +154,35 @@ def convert_joint_position(current_degree_joint_position, unit, relative, target
         target_joint_radian = list(map(math.radians, target_joint_degree))
     return target_joint_degree, target_joint_radian
 
-def trim_target_pose_safety(position):
+def trim_target_pose_safety(position, minx, maxx, miny, maxy, minz, maxz):
     """
     take in a position list [x,y,z] and ensure it doesn't violate the defined fence
     """
     x,y,z = position
     fence_result = ''
-    if fence.maxx < x:
-        rospy.logwarn('HIT FENCE: maxx of {} is < x of {}'.format(fence.maxx, x))
-        x = fence.maxx
+    if maxx < x:
+        rospy.logwarn('HIT FENCE: maxx of {} is < x of {}'.format(maxx, x))
+        x = maxx
         fence_result+='+MAXFENCEX'
-    if x < fence.minx:
-        rospy.logwarn('HIT FENCE: x of {} < miny {}'.format(x, fence.minx))
-        x = fence.minx
+    if x < minx:
+        rospy.logwarn('HIT FENCE: x of {} < miny {}'.format(x, minx))
+        x = minx
         fence_result+='+MINFENCEX'
-    if fence.maxy < y:
-        rospy.logwarn('HIT FENCE: maxy of {} is < y {}'.format(fence.maxy, y))
-        y = fence.maxy
+    if maxy < y:
+        rospy.logwarn('HIT FENCE: maxy of {} is < y {}'.format(maxy, y))
+        y = maxy
         fence_result+='+MAXFENCEY'
-    if y < fence.miny:
-        rospy.logwarn('HIT FENCE: y of {} is  miny of {}'.format(y, fence.miny))
-        y = fence.miny
+    if y < miny:
+        rospy.logwarn('HIT FENCE: y of {} is  miny of {}'.format(y, miny))
+        y = miny
         fence_result+='MINFENCEY'
-    if fence.maxz < z:
-        rospy.logwarn('HIT FENCE: maxz of {} is < z of {}'.format(fence.maxz, z))
-        z = fence.maxz
+    if maxz < z:
+        rospy.logwarn('HIT FENCE: maxz of {} is < z of {}'.format(maxz, z))
+        z = maxz
         fence_result+='MAXFENCEZ'
-    if z < fence.minz:
-        rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, fence.minz))
-        z = fence.minz
+    if z < minz:
+        rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, minz))
+        z = minz
         fence_result+='MINFENCEZ'
     return [x,y,z], fence_result
 

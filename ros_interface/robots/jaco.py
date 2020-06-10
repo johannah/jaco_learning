@@ -48,9 +48,9 @@ from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingers
 from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParameters
 
 from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion, trim_target_pose_safety
+from utils import convert_tool_pose, convert_joint_angles
 #from jaco_control.msg import InteractionParams
-import fence
-from ros_interface.srv import reset, step, home, get_state
+from ros_interface.srv import initialize, reset, step, home, get_state
 
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
@@ -102,13 +102,12 @@ class JacoRobot():
         # Callback data holders
         self.robot_joint_state = JointState()
 
-        self.joint_angle_requester_address = self.prefix + '_driver/joints_action/joint_angles'
-        self.joint_angle_requester = actionlib.SimpleActionClient(self.path_joint_ang, 
+        self.joint_angle_requester_path = self.prefix + '_driver/joints_action/joint_angles'
+        self.joint_angle_requester = actionlib.SimpleActionClient(self.joint_angle_requester_path, 
                                                                ArmJointAnglesAction)
-        self.tool_pose_requester_address = self.prefix+'_driver/pose_action/tool_pose'
-        self.tool_pose_requester =  actionlib.SimpleActionClient(self.tool_pose_requester_address, 
+        self.tool_pose_requester_path = self.prefix+'_driver/pose_action/tool_pose'
+        self.tool_pose_requester =  actionlib.SimpleActionClient(self.tool_pose_requester_path, 
                                                                   ArmPoseAction)
-
 
         rospy.loginfo("Jaco controller init successful.")
 
@@ -205,7 +204,9 @@ class JacoRobot():
         #robot_tool_pose = self.get_tool_pose()
  
         print("REQUESTING POSE before fence of:", position)
-        position, result = trim_target_pose_safety(position)
+        position, result = trim_target_pose_safety(position, self.fence_min_x, self.fence_max_x, 
+                                                             self.fence_min_y, self.fence_max_y, 
+                                                             self.fence_min_z, self.fence_max_z)
         # based on pose_action_client.py
         print("REQUESTING POSE after fence of:", position)
         # TODO - does wait_for_server belong here or when it is defined?
@@ -237,7 +238,14 @@ class JacoRobot():
         # TODO add safety planner
         #joint_angles_degrees, result = self.check_target_pose_safety(joint_angles_degrees)
         joint_cmd = ArmJointAnglesGoal()
-        [eval('joint_cmd.angles.joint%d'%n)=joint_angles_degrees[n] for n in len(joint_angles_degrees)]
+        joint_cmd.angles.joint1 = joint_angles_degrees[0] 
+        joint_cmd.angles.joint2 = joint_angles_degrees[1] 
+        joint_cmd.angles.joint3 = joint_angles_degrees[2] 
+        joint_cmd.angles.joint4 = joint_angles_degrees[3] 
+        joint_cmd.angles.joint5 = joint_angles_degrees[4] 
+        joint_cmd.angles.joint6 = joint_angles_degrees[5] 
+        if len(joint_angle_degrees) == 7:
+            joint_cmd.angles.joint7 = joint_angles_degrees[6] 
         self.joint_angle_requester.send_goal(joint_cmd)
 
         if self.joint_angle_requester.wait_for_result(rospy.Duration(self.request_timeout_secs)):
@@ -305,7 +313,7 @@ class JacoRobot():
         return exit(0)
 
 
-class Jaco(JacoRobot):
+class JacoInterface(JacoRobot):
     def __init__(self):
         #rospy.init_node('dm_jaco_controller', anonymous=True)
         # state passed in 6dof mujoco has 37 dimensions
@@ -316,10 +324,22 @@ class Jaco(JacoRobot):
         self.empty_state = np.zeros((37))
         rospy.loginfo('initiating reset service')
         # instantiate services to be called by dm_wrapper
+        self.connect = rospy.Service('/initialize', initialize, self.initialize)
         self.server_reset = rospy.Service('/reset', reset, self.reset)
         self.server_get_state = rospy.Service('/get_state', get_state, self.get_state)
         self.server_home = rospy.Service('/home', home, self.home)
         self.server_step = rospy.Service('/step', step, self.step)
+        print('waiting for initialization')
+        self.initialized = False
+
+    def initialize(self, cmd):
+        self.fence_min_x = cmd.fence_min_x
+        self.fence_max_x = cmd.fence_max_x
+        self.fence_min_y = cmd.fence_min_y
+        self.fence_max_y = cmd.fence_max_y
+        self.initialized = True
+        rospy.loginfo('initialized --->')
+        return True
 
     def reset_state_trace(self):
         self.state_lock.acquire()
@@ -350,46 +370,38 @@ class Jaco(JacoRobot):
         return success, msg, [], self.state_trace['n_states'], self.state_trace['time_offset'], self.state_trace['joint_pos'], self.state_trace['joint_vel'], self.state_trace['joint_effort'], self.state_trace['tool_pose']
 
     def step(self, cmd):
-        # TODO - should we not use an invalid command or should
-        if cmd.type == 'VEL':
-            # velocity command for each joint in deg/sec
-            self.reset_state_trace()
-            msg, success = self.send_joint_velocity_cmd(cmd.data)
-            return self.get_state()
-        if cmd.type == 'TOOLPOSE':
-            current_tool_pose = self.get_tool_pose()
-            position, orientation_q, orientation_rad, orientation_deg = self.convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
-            print("SENDING POSITION", position)
-            # need to store all states
-            self.reset_state_trace()
-            msg, success = self.send_tool_pose_cmd(position, orientation_q)
-            print("FINISHED")
-            return self.get_state(msg=str(position+orientation_q))
-        if cmd.type == 'JOINTANGLE':
-            current_tool_pose = self.get_tool_pose()
-            position, orientation_q, orientation_rad, orientation_deg = self.convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
-            print("SENDING POSITION", position)
-            # need to store all states
-            self.reset_state_trace()
-            msg, success = self.send_tool_pose_cmd(position, orientation_q)
-            print("FINISHED")
-            return self.get_state(msg=str(position+orientation_q))
+        if self.initialized:
+            # TODO - should we not use an invalid command or should
+            if cmd.type == 'VEL':
+                # velocity command for each joint in deg/sec
+                self.reset_state_trace()
+                msg, success = self.send_joint_velocity_cmd(cmd.data)
+                return self.get_state(success=success, msg=str(msg))
+            if cmd.type == 'TOOLPOSE':
+                current_tool_pose = self.get_tool_pose()
+                position, orientation_q, orientation_rad, orientation_deg = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+                # need to store all states
+                self.reset_state_trace()
+                msg, success = self.send_tool_pose_cmd(position, orientation_q)
+                return self.get_state(success=success, msg=str(position+orientation_q))
+            if cmd.type == 'JOINTANGLE':
+                # need to store all states
+                self.reset_state_trace()
+                current_joint_angles_degrees = self.get_joint_angles()
+                joint_angle_degrees = convert_joint_position(current_joint_angles_degrees, cmd.unit, cmd.relative, cmd.data)
+                msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
+                return self.get_state(success=success, msg=str(position+orientation_q))
  
+            else:
+                raise(NotImplemented)
         else:
-            raise(NotImplemented)
+            return self.get_state(success=False, msg='not initialized')
 
     def home(self, msg=None):
         print('calling home')
         self.home_robot_service()
         return True
  
-    def check_vel_action_safety(self, action):
-        # action in deg/second
-        if np.abs(action).max() < 200:
-            return True
-        else:
-            return False
-
     def reset(self, msg=None):
         print('calling reset')
         self.home_robot_service()
@@ -399,8 +411,9 @@ class Jaco(JacoRobot):
     
 
 if __name__ == '__main__':
-    jaco = Jaco()
+    jaco = JacoInterface()
     jaco.connect_to_robot()
+    jaco.reset()
     try:
         rospy.spin()
     except KeyBoardInterrupt:
