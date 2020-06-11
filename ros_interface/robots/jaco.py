@@ -337,6 +337,8 @@ class JacoInterface(JacoRobot):
         self.fence_max_x = cmd.fence_max_x
         self.fence_min_y = cmd.fence_min_y
         self.fence_max_y = cmd.fence_max_y
+        self.fence_min_z = cmd.fence_min_z
+        self.fence_max_z = cmd.fence_max_z
         self.initialized = True
         rospy.loginfo('initialized --->')
         return True
@@ -371,25 +373,24 @@ class JacoInterface(JacoRobot):
 
     def step(self, cmd):
         if self.initialized:
-            # TODO - should we not use an invalid command or should
             if cmd.type == 'VEL':
                 # velocity command for each joint in deg/sec
                 self.reset_state_trace()
                 msg, success = self.send_joint_velocity_cmd(cmd.data)
                 return self.get_state(success=success, msg=str(msg))
-            if cmd.type == 'TOOLPOSE':
-                current_tool_pose = self.get_tool_pose()
-                position, orientation_q, orientation_rad, orientation_deg = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
-                # need to store all states
-                self.reset_state_trace()
-                msg, success = self.send_tool_pose_cmd(position, orientation_q)
-                return self.get_state(success=success, msg=str(position+orientation_q))
-            if cmd.type == 'JOINTANGLE':
-                # need to store all states
+            elif cmd.type == 'ANGLE':
+                # command joint position angle 
                 self.reset_state_trace()
                 current_joint_angles_degrees = self.get_joint_angles()
                 joint_angle_degrees = convert_joint_position(current_joint_angles_degrees, cmd.unit, cmd.relative, cmd.data)
                 msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
+                return self.get_state(success=success, msg=str(position+orientation_q))
+            elif cmd.type == 'TOOL':
+                # command end effector pose in cartesian space
+                current_tool_pose = self.get_tool_pose()
+                position, orientation_q, orientation_rad, orientation_deg = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+                self.reset_state_trace()
+                msg, success = self.send_tool_pose_cmd(position, orientation_q)
                 return self.get_state(success=success, msg=str(position+orientation_q))
  
             else:

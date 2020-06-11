@@ -62,7 +62,7 @@ add_message_files(
 ## Generate services in the 'srv' folder
  add_service_files(
    FILES
-   connect.srv
+   initialize.srv
    home.srv
    reset.srv
    step.srv
