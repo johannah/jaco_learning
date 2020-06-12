@@ -1,15 +1,19 @@
 import math
 import numpy as np
 
-def convert_to_degree(angle):
+def convert_to_degrees(unit, angle):
     """
-    Converts the input angle to degree.
-    :param angle: input angle in radian
-    :type angle: np.array or float
-    :return: converted angle to degrees
+    Converts the input angle to degree if unit is radians
+    :param unit 'deg' or 'rad' indicating the type of input angle
+    :param angle: array of input angles in radian or degrees
+    :return: converted angle to degrees if unit==rad otherise return unchanged
     :rtype: np.array or float
     """
-    return 180. * angle / np.pi
+    if unit == 'rad':
+        return np.rad2deg(angle)
+    else:
+        return angle
+
 
 def wrap_to_pi(angles):
     """
@@ -161,27 +165,27 @@ def trim_target_pose_safety(position, minx, maxx, miny, maxy, minz, maxz):
     x,y,z = position
     fence_result = ''
     if maxx < x:
-        rospy.logwarn('HIT FENCE: maxx of {} is < x of {}'.format(maxx, x))
+        print('HIT FENCE: maxx of {} is < x of {}'.format(maxx, x))
         x = maxx
         fence_result+='+MAXFENCEX'
     if x < minx:
-        rospy.logwarn('HIT FENCE: x of {} < miny {}'.format(x, minx))
+        print('HIT FENCE: x of {} < miny {}'.format(x, minx))
         x = minx
         fence_result+='+MINFENCEX'
     if maxy < y:
-        rospy.logwarn('HIT FENCE: maxy of {} is < y {}'.format(maxy, y))
+        print('HIT FENCE: maxy of {} is < y {}'.format(maxy, y))
         y = maxy
         fence_result+='+MAXFENCEY'
     if y < miny:
-        rospy.logwarn('HIT FENCE: y of {} is  miny of {}'.format(y, miny))
+        print('HIT FENCE: y of {} is  miny of {}'.format(y, miny))
         y = miny
         fence_result+='MINFENCEY'
     if maxz < z:
-        rospy.logwarn('HIT FENCE: maxz of {} is < z of {}'.format(maxz, z))
+        print('HIT FENCE: maxz of {} is < z of {}'.format(maxz, z))
         z = maxz
         fence_result+='MAXFENCEZ'
     if z < minz:
-        rospy.logwarn('HIT FENCE: z of {} < minz of {}'.format(z, minz))
+        print('HIT FENCE: z of {} < minz of {}'.format(z, minz))
         z = minz
         fence_result+='MINFENCEZ'
     return [x,y,z], fence_result

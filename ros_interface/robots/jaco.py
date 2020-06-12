@@ -48,14 +48,13 @@ from kinova_msgs.msg import ArmJointAnglesGoal, ArmJointAnglesAction, SetFingers
 from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParameters
 
 from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion, trim_target_pose_safety
-from utils import convert_tool_pose, convert_joint_angles
+from utils import convert_tool_pose, convert_joint_angles, convert_to_degrees
 #from jaco_control.msg import InteractionParams
 from ros_interface.srv import initialize, reset, step, home, get_state
 
 # todo - force this to load configuration from file should have safety params
 # torque, velocity limits in it
 
-radians_to_deg = lambda angle: (180. * angle / np.pi)
 
 class JacoConfig(BaseConfig):
     def __init__(self):
@@ -75,12 +74,13 @@ class JacoConfig(BaseConfig):
         """ check important parts of the config"""
        # assert num join_configs is the same as the n_joints
 
-class JacoRobot():
-
-    def init_ros(self, robot_type='j2n7s300', cfg=JacoConfig()):
+class JacoRobot(object):
+    def __init__(self, robot_type='j2n7s300', cfg=JacoConfig()):
         self.state_lock = threading.Lock()
+        self.reset_state_trace()
         self.tool_pose_lock = threading.Lock()
 
+        self.n_states = 0
         self.request_timeout_secs = 10
         rospy.loginfo('starting init of ros')
         self.robot_type = robot_type
@@ -93,11 +93,11 @@ class JacoRobot():
         rospy.loginfo('waiting for service ---> %s'%self.path_home_arm)
         rospy.wait_for_service(self.path_home_arm)
         self.home_robot_service = rospy.ServiceProxy(self.path_home_arm, HomeArm)
-        # Joint velocity command publisher - send commands to the kinova driver
-        self.path_joint_vel = self.prefix + '_driver/in/joint_velocity'
-        self.joint_velocity_publisher = rospy.Publisher(self.path_joint_vel, 
-                                                        JointVelocity, 
-                                                        queue_size=50)
+        ## Joint velocity command publisher - send commands to the kinova driver
+        #self.path_joint_vel = self.prefix + '_driver/in/joint_velocity'
+        #self.joint_velocity_publisher = rospy.Publisher(self.path_joint_vel, 
+        #                                                JointVelocity, 
+        #                                                queue_size=50)
  
         # Callback data holders
         self.robot_joint_state = JointState()
@@ -110,6 +110,9 @@ class JacoRobot():
                                                                   ArmPoseAction)
 
         rospy.loginfo("Jaco controller init successful.")
+
+    def add_fake_n_states(self):
+        self.n_states +=1
 
     def connect_to_robot(self):
         """
@@ -154,6 +157,18 @@ class JacoRobot():
         ################################################
         rospy.loginfo("Connected to the robot")
 
+    def reset_state_trace(self):
+        self.state_lock.acquire()
+        self.n_states = 0
+        self.state_start = time.time()
+        self.state_trace = {'n_states':0,
+                             'time_offset':[], 
+                             'joint_pos':[], 
+                             'joint_vel':[], 
+                             'joint_effort':[], 
+                             'tool_pose':[]
+                             }
+        self.state_lock.release()
 
     def receive_joint_state(self, robot_joint_state):
         """
@@ -162,23 +177,31 @@ class JacoRobot():
         :type robot_joint_state JointState
         :return None
         """
-        self.state_lock.acquire()
+        #self.state_lock.acquire()
         # Hacky limit of states
         self.robot_joint_state = copy(robot_joint_state)
 
-        self.state_trace['n_states']+=1
-        self.state_trace['time_offset'].append(time.time()-self.state_start)
-        self.state_trace['joint_pos'].extend(self.robot_joint_state.position)
-        self.state_trace['joint_vel'].extend(self.robot_joint_state.velocity)
-        self.state_trace['joint_effort'].extend(self.robot_joint_state.effort)
-        robot_tool_pose = self.get_tool_pose()
-        tool_pose  = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z, 
-                      robot_tool_pose.pose.orientation.x, robot_tool_pose.pose.orientation.y, 
-                      robot_tool_pose.pose.orientation.z, robot_tool_pose.pose.orientation.w]
-        self.state_trace['tool_pose'].extend(tool_pose)
+        self.n_states +=1
+        #self.state_trace['n_states']+=1
+        #self.state_trace['time_offset'].append(time.time()-self.state_start)
+        #self.state_trace['joint_pos'].extend(self.robot_joint_state.position)
+        #self.state_trace['joint_vel'].extend(self.robot_joint_state.velocity)
+        #self.state_trace['joint_effort'].extend(self.robot_joint_state.effort)
+        #robot_tool_pose = self.get_tool_pose()
+        #tool_pose  = [robot_tool_pose.pose.position.x, robot_tool_pose.pose.position.y, robot_tool_pose.pose.position.z, 
+        #              robot_tool_pose.pose.orientation.x, robot_tool_pose.pose.orientation.y, 
+        #              robot_tool_pose.pose.orientation.z, robot_tool_pose.pose.orientation.w]
+        #self.state_trace['tool_pose'].extend(tool_pose)
 
-        self.state_lock.release()
+        #self.state_lock.release()
         self.joint_state_rcvd = True
+
+    def get_state_trace(self):
+        #self.state_lock.acquire()
+        #st = copy(self.state_trace)
+        print('get',self.n_states)
+        #self.state_lock.release()
+        return self.n_states
             
     def get_tool_pose(self):
         self.tool_pose_lock.acquire()
@@ -278,30 +301,30 @@ class JacoRobot():
             success = False
         return result, success
 
-
-    def send_joint_velocity_cmd(self, velocity):
-        """
-        Creates a joint velocity command with the target velocity for each joint.
-        :param velocity: velocity of each joint in deg/s
-        :type velocity: np.array
-        :return: joint velocity command
-        :rtype: JointVelocity
-        """
-        # TODO check safety
-        success = True
-        joint_cmd = JointVelocity()
-        joint_cmd.joint1 = velocity[0]
-        joint_cmd.joint2 = velocity[1]
-        joint_cmd.joint3 = velocity[2]
-        joint_cmd.joint4 = velocity[3]
-        joint_cmd.joint5 = velocity[4]
-        joint_cmd.joint6 = velocity[5]
-        joint_cmd.joint7 = 0.0
-        if self.n_joints == 7:
-            joint_cmd.joint7 = velocity[6]
-        self.joint_velocity_publisher.publish(joint_cmd)
-        return 'sent', success
-
+#    def send_joint_velocity_cmd(self, velocity):
+#        """
+#        Creates a joint velocity command with the target velocity for each joint.
+#        :param velocity: velocity of each joint in deg/s
+#        :type velocity: np.array
+#        :return: joint velocity command
+#        :rtype: JointVelocity
+#        Velocity control seems like it is too slow to be useful
+#        """
+#        # TODO check safety
+#        success = True
+#        joint_cmd = JointVelocity()
+#        joint_cmd.joint1 = velocity[0]
+#        joint_cmd.joint2 = velocity[1]
+#        joint_cmd.joint3 = velocity[2]
+#        joint_cmd.joint4 = velocity[3]
+#        joint_cmd.joint5 = velocity[4]
+#        joint_cmd.joint6 = velocity[5]
+#        joint_cmd.joint7 = 0.0
+#        if self.n_joints == 7:
+#            joint_cmd.joint7 = velocity[6]
+#        print('publishing', joint_cmd)
+#        self.joint_velocity_publisher.publish(joint_cmd)
+#        return 'sent', success
 
     def shutdown_controller():
         """
@@ -314,14 +337,13 @@ class JacoRobot():
 
 
 class JacoInterface(JacoRobot):
-    def __init__(self):
+    def __init__(self, robot_type='j2n7s300'):
         #rospy.init_node('dm_jaco_controller', anonymous=True)
         # state passed in 6dof mujoco has 37 dimensions
-        # our 7DOF has 39 dimensions
-        self.n_joints = 7
-        self.init_ros()
-        self.reset_state_trace()
-        self.empty_state = np.zeros((37))
+        # our 7DOF 7 major joints and 6 fingerjoints
+        self.n_joints = int(robot_type[3])
+        super(JacoInterface, self).__init__(robot_type=robot_type, cfg=JacoConfig())
+        self.connect_to_robot()
         rospy.loginfo('initiating reset service')
         # instantiate services to be called by dm_wrapper
         self.connect = rospy.Service('/initialize', initialize, self.initialize)
@@ -331,6 +353,8 @@ class JacoInterface(JacoRobot):
         self.server_step = rospy.Service('/step', step, self.step)
         print('waiting for initialization')
         self.initialized = False
+        rospy.spin()
+        
 
     def initialize(self, cmd):
         self.fence_min_x = cmd.fence_min_x
@@ -343,18 +367,6 @@ class JacoInterface(JacoRobot):
         rospy.loginfo('initialized --->')
         return True
 
-    def reset_state_trace(self):
-        self.state_lock.acquire()
-        self.state_start = time.time()
-        self. state_trace = {'n_states':0,
-                             'time_offset':[], 
-                             'joint_pos':[], 
-                             'joint_vel':[], 
-                             'joint_effort':[], 
-                             'tool_pose':[]
-                             }
-        self.state_lock.release()
-
     def get_state(self, success=True, msg=''):
         """ 
             :msg is not used - this returns state regardless of message passed in (for service calls)
@@ -366,30 +378,38 @@ class JacoInterface(JacoRobot):
                    'hand_pos is shape (7,)
                    'target_pos' is shape (3,)
         """
-        self.state_lock.acquire()
-        st = copy(self.state_trace)
-        self.state_lock.release()
-        return success, msg, [], self.state_trace['n_states'], self.state_trace['time_offset'], self.state_trace['joint_pos'], self.state_trace['joint_vel'], self.state_trace['joint_effort'], self.state_trace['tool_pose']
+        self.add_fake_n_states()
+        self.add_fake_n_states()
+        self.add_fake_n_states()
+        ns = self.n_states
+        #ns = self.get_state_trace()
+        #print(st)
+        #return success, msg, [], st['n_states'], st['time_offset'], st['joint_pos'], st['joint_vel'], st['joint_effort'], st['tool_pose']
+        return success, msg, [], ns, [], [], [], [], [] 
 
     def step(self, cmd):
         if self.initialized:
-            if cmd.type == 'VEL':
-                # velocity command for each joint in deg/sec
-                self.reset_state_trace()
-                msg, success = self.send_joint_velocity_cmd(cmd.data)
-                return self.get_state(success=success, msg=str(msg))
-            elif cmd.type == 'ANGLE':
+            #if cmd.type == 'VEL':
+            #    # velocity command for each joint in deg/sec
+            #    # vel command dont have time to actually get results
+            #    cmd_vel_deg = convert_to_degrees(cmd.unit, np.array(cmd.data))
+            #    print("REQUESTING", cmd_vel_deg)
+            #    msg, success = self.send_joint_velocity_cmd(cmd_vel_deg)
+            #    return self.get_state(success=success, msg=str(msg))
+            if cmd.type == 'ANGLE':
                 # command joint position angle 
                 self.reset_state_trace()
                 current_joint_angles_degrees = self.get_joint_angles()
                 joint_angle_degrees = convert_joint_position(current_joint_angles_degrees, cmd.unit, cmd.relative, cmd.data)
+                print(current_joint_angles_degrees)
+                print(joint_angle_degrees)
                 msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
                 return self.get_state(success=success, msg=str(position+orientation_q))
             elif cmd.type == 'TOOL':
+                self.reset_state_trace()
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
                 position, orientation_q, orientation_rad, orientation_deg = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
-                self.reset_state_trace()
                 msg, success = self.send_tool_pose_cmd(position, orientation_q)
                 return self.get_state(success=success, msg=str(position+orientation_q))
  
@@ -413,10 +433,11 @@ class JacoInterface(JacoRobot):
 
 if __name__ == '__main__':
     jaco = JacoInterface()
-    jaco.connect_to_robot()
-    jaco.reset()
-    try:
-        rospy.spin()
-    except KeyBoardInterrupt:
-        sys.exit()
+    #jaco.connect_to_robot()
+    #jaco.reset()
+    #print(jaco.get_state_trace())
+    #try:
+    #    rospy.spin()
+    #except KeyBoardInterrupt:
+    #    sys.exit()
 

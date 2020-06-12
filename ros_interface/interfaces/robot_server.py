@@ -60,6 +60,7 @@ class RobotServer():
             data = cvars[3:]
             data = [float(x) for x in data]
             response = self.service_step(ctype, relative, unit, data)
+            print(response)
             msg = str(response)
         elif fn == 'INIT':
             fence_vars = [x for x in cmd.strip().split(',')]
@@ -72,8 +73,7 @@ class RobotServer():
         elif fn == 'END':
             # this is just used for the local server and won't be sent to jaco
             # TODO maybe it should be used to stop ros processes and shutdown ....
-            self.disconnect()
-            self.create_server()
+            self.connected = False
             msg = 'ENDED'
         else:
             msg = 'NOTIMP'
