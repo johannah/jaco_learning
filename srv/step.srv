@@ -1,8 +1,14 @@
 # step with velocity command for each joint on robot
-string type
-# if a velocity command type, data will be joint velocity comannds in degs/sec - relative unused
+#
+# if a velocity command type, data will be [n,c0,c1,c2,c3...,cDOF] where n is the number of times to apply the veolocity in radians or degrees per second to each joint (c0-cDOF). All commands are sent at 100Hz. Warning - velocity control seems to result in extremely slow movement - perhaps we are doing something wrong. For instance, to command joint 7 at 40 deg/sec 500 times, the following message should be sent:
+# relative NA
+# unit deg
+# [500,0,0,0,0,0,0,40]
+#
 # if pose type, data will be relative or absolute joint position of end effector in mq (position meter, orientation quaternian), mrad, or mdeg units (position meter, orientation Euler-XYZ in degrees or radians)
 # if mq units, 3 position + 4 quaternians are required, otherwise, 3 positions + 3 orientations are required
+
+string type
 bool relative
 string unit
 float64[] data 

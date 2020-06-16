@@ -133,7 +133,7 @@ def convert_tool_pose(current_tool_pose, unit, relative, position, orientation):
         orientation_q = EulerXYZ2Quaternion(orientation_rad)
     return position, orientation_q, orientation_rad, orientation_deg
 
-def convert_joint_angles(current_degree_joint_position, unit, relative, target_joint_position):
+def convert_joint_angles(current_joint_angle_radians, unit, relative, target_joint_position):
     """
     unit: describes the unit of the command - must be 'deg' or 'rad' 
     is_relative: bool indicative whether or not the pose command is relative to the current position or absolute
@@ -142,17 +142,19 @@ def convert_joint_angles(current_degree_joint_position, unit, relative, target_j
  
     assert unit in ['deg', 'rad']
     # current joint estimate is in degrees
+    if relative:
+        current_joint_angle_degrees = [np.rad2deg(current_joint_angle_radians[i]) for i in range(len(current_joint_angle_radians))]
     if unit == 'deg':
         # get absolute value
-        if relative_:
-            target_joint_degree = [target_joint_position[i] + current_degree_joint_position[i] for i in range(len(target_joint_position))]
+        if relative:
+            target_joint_degree = [target_joint_position[i] + current_joint_angle_degrees[i] for i in range(len(target_joint_position))]
         else:
             target_joint_degree = target_joint_position
         target_joint_radian = list(map(math.radians, target_joint_degree))
     elif unit == 'radian':
         if relative:
             # get absolute value
-            target_joint_degree = [math.degrees(target_joint_position[i]) + current_degree_joint_position[i] for i in range(len(target_joint_position))]
+            target_joint_degree = [math.degrees(target_joint_position[i]) + current_joint_angle_degrees[i] for i in range(len(target_joint_position))]
         else:
             target_joint_degree = list(map(math.degrees, target_joint_position))
         target_joint_radian = list(map(math.radians, target_joint_degree))
