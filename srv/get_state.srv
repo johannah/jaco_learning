@@ -1,6 +1,10 @@
 ---
 bool success
+string msg
 string[] name
+int64 n_states
+float64[] time_offset
 float64[] joint_pos
 float64[] joint_vel 
 float64[] joint_effort
+float64[] tool_pos

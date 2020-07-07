@@ -84,6 +84,7 @@ class RobotServer():
     def create_server(self):
         print('starting server at %s'%self.port)
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # 0.0.0.0 will accept from any address - makes this work on docker 
         self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(5)
@@ -94,7 +95,6 @@ class RobotServer():
         if self.connected:
             self.server_socket.close()
             self.connected = False
-
 
     def listen(self):
         try:
@@ -122,10 +122,10 @@ class RobotServer():
   
                         else:
                             time.sleep(1)
-                    except KeyboardInterrupt as e:
-                          print("rcvd interrupt from client loop- closing")
-                          self.disconnect()
-                          sys.exit()
+                    except:
+                        print("rcvd interrupt from client loop- closing")
+                        self.disconnect()
+                        sys.exit()
  
         except KeyboardInterrupt as e:
             print("rcvd interrupt - closing")
