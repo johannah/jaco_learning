@@ -1,12 +1,12 @@
 # left/right
-minx = -.14
-maxx = .25
+minx = -.5
+maxx = .5
 # arm reaching toward hen facing label
-miny = -.85
+miny = -1
 # arm reaching away when facing label
-maxy = -.30
-minz = .35
-maxz = 1.5
+maxy = .4
+minz = .15
+maxz = 1.2
 #### default checkers - dont edit #####
 assert maxx>minx
 assert maxy>miny

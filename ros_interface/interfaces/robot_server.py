@@ -1,3 +1,4 @@
+import sys
 import socket
 import rospy
 from ros_interface.srv import initialize, reset, step, home, get_state
@@ -14,6 +15,7 @@ class RobotServer():
         rospy.init_node('robot_server')
         self.setup_ros()
         self.create_server()
+        rospy.spin()
 
     def setup_ros(self):
         print('setting up ros')
@@ -44,7 +46,7 @@ class RobotServer():
         print("cmd is:{}".format(cmd))
         if fn == 'RESET':
             response = self.service_reset()
-            msg = str(response.success)
+            msg = str(response)
         elif fn == 'GET_STATE':
             response = self.service_get_state()
             msg = str(response)
@@ -55,12 +57,12 @@ class RobotServer():
             # cmd should be list of floats
             cvars = [x for x in cmd.strip().split(',')]
             ctype = cvars[0]
-            relative = bool(cvars[1])
+            relative = int(cvars[1])
+            print("SENDING STEP RELATIVE", relative)
             unit = str(cvars[2])
             data = cvars[3:]
             data = [float(x) for x in data]
             response = self.service_step(ctype, relative, unit, data)
-            print(response)
             msg = str(response)
         elif fn == 'INIT':
             fence_vars = [x for x in cmd.strip().split(',')]

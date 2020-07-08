@@ -151,13 +151,14 @@ def convert_joint_angles(current_joint_angle_radians, unit, relative, target_joi
         else:
             target_joint_degree = target_joint_position
         target_joint_radian = list(map(math.radians, target_joint_degree))
-    elif unit == 'radian':
+    elif unit == 'rad':
         if relative:
             # get absolute value
             target_joint_degree = [math.degrees(target_joint_position[i]) + current_joint_angle_degrees[i] for i in range(len(target_joint_position))]
         else:
             target_joint_degree = list(map(math.degrees, target_joint_position))
         target_joint_radian = list(map(math.radians, target_joint_degree))
+    print(target_joint_radian)
     return target_joint_degree, target_joint_radian
 
 def trim_target_pose_safety(position, minx, maxx, miny, maxy, minz, maxz):
