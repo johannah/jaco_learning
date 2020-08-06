@@ -1,4 +1,5 @@
 import sys
+import thread
 import socket
 import rospy
 from ros_interface.srv import initialize, reset, step, home, get_state
@@ -7,6 +8,7 @@ import time
 class RobotServer():
     def __init__(self, port=9030):
         # robot actually talks to the robot function
+        self.client_num = 0
         self.port = port
         self.endseq = '|>'
         self.startseq = '<|'
@@ -15,7 +17,7 @@ class RobotServer():
         rospy.init_node('robot_server')
         self.setup_ros()
         self.create_server()
-        rospy.spin()
+        #rospy.spin()
 
     def setup_ros(self):
         print('setting up ros')
@@ -75,7 +77,6 @@ class RobotServer():
         elif fn == 'END':
             # this is just used for the local server and won't be sent to jaco
             # TODO maybe it should be used to stop ros processes and shutdown ....
-            self.connected = False
             msg = 'ENDED'
         else:
             msg = 'NOTIMP'
@@ -91,48 +92,53 @@ class RobotServer():
         self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(5)
         self.connected = False
-        self.listen()
+        while True:
+            try:
+                c, addr = self.server_socket.accept()
+                thread.start_new_thread(self.chat_with_client, (c,addr))
+                self.client_num +=1 
+            except Exception as e:
+                print(e)
+                self.disconnect()
+                sys.exit()
+            
 
     def disconnect(self):
         if self.connected:
             self.server_socket.close()
             self.connected = False
 
-    def listen(self):
-        try:
-            while not self.connected:
-                connection, client_address = self.server_socket.accept()
-                print('connected to', client_address)
-                self.connected = True
-                while self.connected:
-                    try:
-                        print('-waiting for next cmd-')
-                        # every message needs a response before it will send a new
-                        # message
-                        # TODO - will need to handle large messages eventually, but
-                        # leave this for now
-                        rx_data = connection.recv(1024)
-                        if rx_data:
-                            rx_data = rx_data.decode().strip()
-                            print("rx", rx_data)
-                            if rx_data.endswith(self.endseq):
-                                fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
-                                ret_msg = self.handle_msg(fn, cmd)
-                                connection.sendall(ret_msg.encode())
-                            else:
-                                print(rx_data, 'does not end with', self.endseq)
+    def chat_with_client(self, connection, client_address):
+        print('connected to client:{} at {}'.format(self.client_num, client_address))
+        connected = True
+        while connected:
+            try:
+                #print('-waiting for next cmd-')
+                # every message needs a response before it will send a new
+                # message
+                # TODO - will need to handle large messages eventually, but
+                # leave this for now
+                rx_data = connection.recv(1024)
+                if rx_data:
+                    rx_data = rx_data.decode().strip()
+                    print("rx", rx_data)
+                    if rx_data.endswith(self.endseq):
+                        fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
+                        ret_msg = self.handle_msg(fn, cmd)
+                        connection.sendall(ret_msg.encode())
+                        if fn.upper() == 'END':
+                            connected = False
+                    else:
+                        print(rx_data, 'does not end with', self.endseq)
   
-                        else:
-                            time.sleep(1)
-                    except:
-                        print("rcvd interrupt from client loop- closing")
-                        self.disconnect()
-                        sys.exit()
+                else:
+                    time.sleep(.1)
+            except:
+                print("rcvd interrupt from client loop- closing")
+                self.disconnect()
+                sys.exit()
+        connection.close()
  
-        except KeyboardInterrupt as e:
-            print("rcvd interrupt - closing")
-            self.disconnect()
-            sys.exit()
                     
 
 if __name__ == '__main__':

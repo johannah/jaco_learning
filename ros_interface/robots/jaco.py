@@ -259,8 +259,6 @@ class JacoRobot(object):
         Sends the joint angle command to the action server and waits for its execution. 
         Note that the planning is done in the robot base.
         """
-        # TODO add safety planner
-        #joint_angles_degrees, result = self.check_target_pose_safety(joint_angles_degrees)
         joint_cmd = ArmJointAnglesGoal()
         joint_cmd.angles.joint1 = joint_angles_degrees[0] 
         joint_cmd.angles.joint2 = joint_angles_degrees[1] 
@@ -383,10 +381,13 @@ class JacoInterface(JacoRobot):
                 # command joint position angle 
                 current_joint_angles_radians = self.get_joint_angles()
                 joint_angles_degrees, joint_angles_radians = convert_joint_angles(current_joint_angles_radians, cmd.unit, cmd.relative, cmd.data)
-                print("ANGLE STEP CMD", cmd.data)
-                print("ANGLE STEP actual", joint_angles_degrees)
+                #print("ANGLE STEP CMD", cmd.data)
+                # TODO add safety planner
+                #print("ANGLE STEP actual", joint_angles_degrees)
                 msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
                 success = True
+                print("debug sleep")
+                time.sleep(1)
                 return self.get_state(success=success, msg=msg)
 
             elif cmd.type == 'TOOL':
