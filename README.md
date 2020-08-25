@@ -4,10 +4,6 @@ The purpose of this library is to provide a method of converting standard rl sta
 
 A TCP connection exposes init, step, reset, get_state, home to the robot through interfaces/robot_server.py. 
 
-TODO describe input/output of these functions. 
-TODO describe fence
-TODO describe kinds of steps
-
 # Running Jaco Experiments
 
 The physical arm is attached via a usb to a machine running jaco_docker. The robot_server and robot must be run from this machine. 
@@ -30,18 +26,16 @@ To attach to a running session:
 `docker exec -it jaco_robot /bin/bash`
 
 2) Turn on robot and use remote to set home (light should turn blue on robot). Launch kinova drivers. 
-`roscd ros_interface  
-sh launch/kinova_launch.sh
+`
+roslaunch jaco_remote.launch
 `
 Robot should open hand. 
 
-3) Run jaco.py
-
-4) run robot_server.py
+3) Remote experiments can be run by declaring physics_type='robot' in the task_kwargs of dm_control. Be sure to configure the task_kwarg, "fence" to be within the bounds of your workspace. For instance, a fence of {'x':(-.5,.5), 'y':(-1,.4), 'z':(0.05, 3)} will limit the robot to within .5 meter from side to side, allow a reach of 1 m to the front (towards kinova label), and only allow the robot to reach above the base in z. 
 
 ---
 
-5) After experiments. Return robot to home position, then power off.
+5) After experiments. Return robot to sleep position with the remote (press home until the remote returns to home, then press home again to move it to the sleep position), then power off.
 
 
 ### Position Info
@@ -56,9 +50,4 @@ Current joint angle in degrees /j2n7s300_driver/out/joint_commdnd
 
 # Comments
 Most Jaco components of this repo are based off of [sahandres's jaco_control repo](https://github.com/sahandrez/jaco_control/blob/master/jaco_control/utils/robot.py)
-
-TODO: 
-- forward images   
-- test reconnect cases  
-
 

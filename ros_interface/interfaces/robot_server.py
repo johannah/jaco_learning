@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 import sys
 import thread
 import socket
@@ -20,22 +21,22 @@ class RobotServer():
         #rospy.spin()
 
     def setup_ros(self):
-        print('setting up ros')
+        rospy.loginfo('setting up ros')
         rospy.wait_for_service('/initialize')
         self.service_init = rospy.ServiceProxy('/initialize', initialize)
         rospy.wait_for_service('/reset')
         self.service_reset = rospy.ServiceProxy('/reset', reset)
-        print('setup service: reset')
+        rospy.loginfo('setup service: reset')
         rospy.wait_for_service('/home')
         self.service_home = rospy.ServiceProxy('/home', home)
-        print('setup service: home')
+        rospy.loginfo('setup service: home')
         rospy.wait_for_service('/get_state')
         self.service_get_state = rospy.ServiceProxy('/get_state', get_state)
-        print('setup service: get_state')
+        rospy.loginfo('setup service: get_state')
         rospy.wait_for_service('/step')
         self.service_step = rospy.ServiceProxy('/step', step)
-        print('setup service: step')
-        print('finished setting up ros')
+        rospy.loginfo('setup service: step')
+        rospy.loginfo('finished setting up ros')
 
     def state_callback(self, msg):
         self.state = msg.state
@@ -44,8 +45,8 @@ class RobotServer():
         # todo decode the ros messges here with relevant info
         fn = fn.upper()
         msg = 'NOTIMP'
-        print("handling fn: {}".format(fn))
-        print("cmd is:{}".format(cmd))
+        rospy.loginfo("handling fn: {}".format(fn))
+        rospy.loginfo("cmd is:{}".format(cmd))
         if fn == 'RESET':
             response = self.service_reset()
             msg = str(response)

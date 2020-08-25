@@ -320,7 +320,6 @@ class JacoRobot(object):
 
 class JacoInterface(JacoRobot):
     def __init__(self, robot_type='j2n7s300'):
-        #rospy.init_node('dm_jaco_controller', anonymous=True)
         # state passed in 6dof mujoco has 37 dimensions
         # our 7DOF 7 major joints and 6 fingerjoints
         self.n_joints = int(robot_type[3])
@@ -417,11 +416,4 @@ class JacoInterface(JacoRobot):
 
 if __name__ == '__main__':
     jaco = JacoInterface()
-    #jaco.connect_to_robot()
-    #jaco.reset()
-    #print(jaco.get_state_trace())
-    #try:
-    #    rospy.spin()
-    #except KeyBoardInterrupt:
-    #    sys.exit()
 
