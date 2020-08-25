@@ -8,39 +8,37 @@ A TCP connection exposes init, step, reset, get_state, home to the robot through
 
 The physical arm is attached via a usb to a machine running jaco_docker. The robot_server and robot must be run from this machine. 
 
-After creating jaco_robot using the instructions on github.com/johannah/jaco_docker, you must launch or attach to a running container. 
+1) After creating jaco_robot using the instructions on github.com/johannah/jaco_docker, you must launch or attach to a running container. 
 
-1) Ensure usb connection from robot to computer running docker. 
+  - Ensure usb connection from robot to computer running docker. 
 
-2) Start docker:
+  - Start docker:
 
-If running a new docker instance:
-
-`docker run -it --name jaco_robot --privileged -v /dev/bus/usb:/dev/bus/usb  jaco_control`
-
-To resume a recent docker container:   
-`docker ps`  
-`docker container start <container_id>`  
-
-To attach to a running session:   
-`docker exec -it jaco_robot /bin/bash`
+    - If running a new docker instance:
+      - `docker run -it --name jaco_robot --privileged -v /dev/bus/usb:/dev/bus/usb  jaco_control`
+    
+    - To resume a recent docker container:   
+      - `docker ps`  
+      - `docker container start <container_id>`  
+    
+    - To attach to a running session:   
+      - `docker exec -it jaco_robot /bin/bash`
 
 3) Turn on robot and use remote to set home (light should turn blue on robot). Launch kinova drivers. 
-`
-roslaunch jaco_remote.launch
-`
-Robot should open hand. 
+
+  - `roslaunch jaco_remote.launch`
+
+  - Robot should open hand. 
 
 4) Running remote experiments.
 
-Remote experiments can be run by declaring `physics_type='robot'` in the `task_kwargs` of a `dm_control` env from our [dm_control](http://github.com/johannah/dm_control). Data is sent via tcp through port 9030 be default. 
+  - Remote experiments can be run by declaring `physics_type='robot'` in the `task_kwargs` of a `dm_control` env from our [dm_control](http://github.com/johannah/dm_control). Data is sent via tcp through port 9030 by default. 
 
-Be sure to configure the `fence` in `task_kwargs` to be within the bounds of your workspace. For instance, a `fence={'x':(-.5,.5), 'y':(-1,.4), 'z':(0.05, 3)}` will limit the robot to within .5 meter from side to side, allow a reach of 1m to the front (towards kinova label), and only allow the robot to reach above the base in z. 
+  - Be sure to configure the `fence` in `task_kwargs` to be within the bounds of your workspace. For instance, a `fence={'x':(-.5,.5), 'y':(-1,.4), 'z':(0.05, 3)}` will limit the robot to within .5 meter from side to side, allow a reach of 1m to the front (towards kinova label), and only allow the robot to reach above the base in z. 
 
-Each step command returns the robot position, velocity, and effort for each joint as well as the tool pose.  
+  - Each step command returns the robot position, velocity, and effort for each joint as well as the tool pose.  
 
-See [jaco_rl](http://github.com/johannah/jaco_rl) for an example of an rl agent trained to work with this repo.
-
+  - See [jaco_rl](http://github.com/johannah/jaco_rl) for an example of an rl agent trained to work with this repo.
 
 ---
 
