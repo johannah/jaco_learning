@@ -14,7 +14,7 @@ origin is the intersection point of the bottom plane of the base and cylinder ce
 +z axis is upwards when robot is standing on a flat surface.
 
 This is the current joint angle in degrees
-/j2n7s300_driver/out/joint_command
+/j2s7s300_driver/out/joint_command
 
 """
 
@@ -75,7 +75,7 @@ class JacoConfig(BaseConfig):
        # assert num join_configs is the same as the n_joints
 
 class JacoRobot(object):
-    def __init__(self, robot_type='j2n7s300', cfg=JacoConfig()):
+    def __init__(self, robot_type='j2s7s300', cfg=JacoConfig()):
         self.state_lock = threading.Lock()
         #self.reset_state_trace()
         self.reset_state()
@@ -319,7 +319,7 @@ class JacoRobot(object):
 
 
 class JacoInterface(JacoRobot):
-    def __init__(self, robot_type='j2n7s300'):
+    def __init__(self, robot_type='j2s7s300'):
         # state passed in 6dof mujoco has 37 dimensions
         # our 7DOF 7 major joints and 6 fingerjoints
         self.n_joints = int(robot_type[3])
@@ -385,8 +385,6 @@ class JacoInterface(JacoRobot):
                 #print("ANGLE STEP actual", joint_angles_degrees)
                 msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
                 success = True
-                print("debug sleep")
-                time.sleep(1)
                 return self.get_state(success=success, msg=msg)
 
             elif cmd.type == 'TOOL':

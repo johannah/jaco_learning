@@ -1,14 +1,21 @@
 #! /usr/bin/env python
+import os
 import sys
 import thread
 import socket
 import rospy
+from sensor_msgs.msg import Image
 from ros_interface.srv import initialize, reset, step, home, get_state
 import time
+import numpy as np
+import threading 
+import json
+import zlib
 
 class RobotServer():
     def __init__(self, port=9030):
         # robot actually talks to the robot function
+        self.count = 0
         self.client_num = 0
         self.port = port
         self.endseq = '|>'
@@ -16,11 +23,18 @@ class RobotServer():
         # between function call and data
         self.midseq = '**'
         rospy.init_node('robot_server')
+        self.image_lock = threading.Lock()
+        self.image_string = 'none'
+        self.image_height = 0
+        self.image_width = 0
+        self.image_encoding = 'none'
         self.setup_ros()
         self.create_server()
         #rospy.spin()
 
     def setup_ros(self):
+        self.image_sub = rospy.Subscriber("/camera/color/image_raw",Image,self.image_callback)
+
         rospy.loginfo('setting up ros')
         rospy.wait_for_service('/initialize')
         self.service_init = rospy.ServiceProxy('/initialize', initialize)
@@ -38,23 +52,26 @@ class RobotServer():
         rospy.loginfo('setup service: step')
         rospy.loginfo('finished setting up ros')
 
-    def state_callback(self, msg):
-        self.state = msg.state
+    def get_image_string(self):
+        return self.image_data
+
+    def image_callback(self, msg):
+        self.image_data = msg.data
+        self.image_height = str(msg.height).encode('utf-8')
+        self.image_width = str(msg.width).encode('utf-8')
+        self.image_encoding = msg.encoding.encode('utf-8')
 
     def handle_msg(self, fn, cmd):
-        # todo decode the ros messges here with relevant info
-        fn = fn.upper()
+        fn = str(fn.upper())
         msg = 'NOTIMP'
         rospy.loginfo("handling fn: {}".format(fn))
         rospy.loginfo("cmd is:{}".format(cmd))
+
         if fn == 'RESET':
             response = self.service_reset()
             msg = str(response)
         elif fn == 'GET_STATE':
             response = self.service_get_state()
-            msg = str(response)
-        elif fn == 'HOME':
-            response = self.service_home()
             msg = str(response)
         elif fn == 'STEP':
             # cmd should be list of floats
@@ -79,10 +96,16 @@ class RobotServer():
             # this is just used for the local server and won't be sent to jaco
             # TODO maybe it should be used to stop ros processes and shutdown ....
             msg = 'ENDED'
+        elif fn == 'HOME':
+            response = self.service_home()
+            msg = str(response)
+        elif fn == 'RENDER':
+            msg = self.get_image_string()
+            return self.startseq+msg+self.endseq
         else:
             msg = 'NOTIMP'
         ret_msg = self.startseq+'ACK'+fn+self.midseq+msg+self.endseq
-        print("SERVER RESPONDS WITH", ret_msg)
+        ret_msg = ret_msg.encode()
         return ret_msg
 
     def create_server(self):
@@ -92,6 +115,7 @@ class RobotServer():
         # 0.0.0.0 will accept from any address - makes this work on docker 
         self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(5)
+        self.server_socket.settimeout(180)
         self.connected = False
         while True:
             try:
@@ -102,7 +126,6 @@ class RobotServer():
                 print(e)
                 self.disconnect()
                 sys.exit()
-            
 
     def disconnect(self):
         if self.connected:
@@ -114,19 +137,18 @@ class RobotServer():
         connected = True
         while connected:
             try:
-                #print('-waiting for next cmd-')
                 # every message needs a response before it will send a new
                 # message
                 # TODO - will need to handle large messages eventually, but
                 # leave this for now
-                rx_data = connection.recv(1024)
+                rx_data = connection.recv(100000)
                 if rx_data:
                     rx_data = rx_data.decode().strip()
                     print("rx", rx_data)
                     if rx_data.endswith(self.endseq):
                         fn, cmd = rx_data[len(self.startseq):-len(self.endseq):].split(self.midseq)
                         ret_msg = self.handle_msg(fn, cmd)
-                        connection.sendall(ret_msg.encode())
+                        connection.sendall(ret_msg)
                         if fn.upper() == 'END':
                             connected = False
                     else:
@@ -134,8 +156,8 @@ class RobotServer():
   
                 else:
                     time.sleep(.1)
-            except:
-                print("rcvd interrupt from client loop- closing")
+            except Exception as e:
+                print('EXCEPTION: {}'.format(e))
                 self.disconnect()
                 sys.exit()
         connection.close()
