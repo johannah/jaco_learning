@@ -1,0 +1,16 @@
+float64 fence_min_x
+float64 fence_max_x
+float64 fence_min_y
+float64 fence_max_y
+float64 fence_min_z
+float64 fence_max_z
+---
+bool success
+string msg
+string[] name
+int64 n_states
+float64[] time_offset
+float64[] joint_pos
+float64[] joint_vel 
+float64[] joint_effort
+float64[] tool_pos
