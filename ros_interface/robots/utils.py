@@ -160,8 +160,6 @@ def convert_tool_pose(current_tool_pose, unit, relative, position, orientation):
 
     return pose_mq_, pose_mdeg_, pose_mrad_
 
-
-
 def convert_tool_pose_old_version(current_tool_pose, unit, relative, position, orientation):
     """
     Mel: This was the older version of code, the outputs of this implementation and above are
