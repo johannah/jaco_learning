@@ -83,7 +83,91 @@ def EulerXYZ2Quaternion(EulerXYZ_):
 
 def convert_tool_pose(current_tool_pose, unit, relative, position, orientation):
     """
-    unit: describes the unit of the command - mq:quaternian, mrad:radians, or mdeg:degrees. If mq, 3 position+4 quaternians data are required, otherwise, 3 position + 3 orientation data are required
+    Code adapted from: https://github.com/Kinovarobotics/kinova-ros/blob/master/kinova_demo/nodes/kinova_demo/pose_action_client.py
+    unit: describes the unit of the command - mq:quaternian, mrad:radians, or mdeg:degrees. If mq, 3 position+4 quaternians data are required, 
+        otherwise, 3 position + 3 orientation data are required
+    is_relative: bool indicative whether or not the pose command is relative
+        to the current position or absolute position: relative or absolute position and orientation values for XYZ
+    """
+
+    position_ = list(np.array(position))
+    position_ = [float(n) for n in position_]
+
+    orientation_ = list(np.array(orientation))
+    orientation_ = [float(n) for n in orientation_]
+
+    assert unit in ['mq', 'mrad', 'mdeg']
+    if unit == 'mq':
+        assert(len(orientation_) == 4); "end effector pose in quaternions requires 3 position & 4 orientation values - received {}".format(len(orientation_))
+    else:
+        assert(len(orientation_) == 3); "end effector pose in rad/deg requires 3 position & 3 orientation values - received {}".format(len(orientation_))
+
+    current_position = [current_tool_pose.pose.position.x,
+                     current_tool_pose.pose.position.y,
+                     current_tool_pose.pose.position.z]
+    current_orientation_q = [current_tool_pose.pose.orientation.x,
+                          current_tool_pose.pose.orientation.y,
+                          current_tool_pose.pose.orientation.z,
+                          current_tool_pose.pose.orientation.w]
+
+    for i in range(0,3):
+        if relative:
+            position_[i] = position_[i] + current_position[i]
+        else:
+            position_[i] = position_[i]
+
+    print('pose_value_ in unitParser 1: {}'.format(position_))
+
+    if unit == 'mq':
+        if relative:
+            orientation_XYZ = Quaternion2EulerXYZ(orientation_)
+            orientation_xyz_list = [orientation_XYZ[i] + current_orientation_q[i] for i in range(0,3)]
+            orientation_q = EulerXYZ2Quaternion(orientation_xyz_list)
+        else:
+            orientation_q = orientation_
+
+        orientation_rad = Quaternion2EulerXYZ(orientation_q)
+        orientation_deg = list(map(math.degrees, orientation_rad))
+
+    elif unit == 'mdeg':
+        if relative:
+            orientation_deg_list = list(map(math.degrees, current_orientation_q))
+            orientation_deg = [orientation_[i] + orientation_deg_list[i] for i in range(0,3)]
+        else:
+            orientation_deg = orientation_
+
+        orientation_rad = list(map(math.radians, orientation_deg))
+        orientation_q = EulerXYZ2Quaternion(orientation_rad)
+
+    elif unit == 'mrad':
+        if relative:
+            orientation_rad_list =  current_orientation_q
+            orientation_rad = [orientation_[i] + orientation_rad_list[i] for i in range(0,3)]
+        else:
+            orientation_rad = orientation_
+
+        orientation_deg = list(map(math.degrees, orientation_rad))
+        orientation_q = EulerXYZ2Quaternion(orientation_rad)
+
+    else:
+        raise Exception("Cartesian value have to be in unit: mq, mdeg or mrad")
+
+    pose_mq_ = position_ + orientation_q
+    pose_mdeg_ = position_ + orientation_deg
+    pose_mrad_ = position_ + orientation_rad
+
+    print('pose_mq in unitParser 1: {}'.format(pose_mq_))  # debug
+
+    return pose_mq_, pose_mdeg_, pose_mrad_
+
+
+
+def convert_tool_pose_old_version(current_tool_pose, unit, relative, position, orientation):
+    """
+    Mel: This was the older version of code, the outputs of this implementation and above are
+    not the same.
+    unit: describes the unit of the command - mq:quaternian, mrad:radians, or mdeg:degrees.
+        If mq, 3 position+4 quaternians data are required, otherwise, 3 position + 3 orientation data are required
     is_relative: bool indicative whether or not the pose command is relative to the current position or absolute
     position: relative or absolute position and orientation values for XYZ 
     """

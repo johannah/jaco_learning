@@ -390,8 +390,9 @@ class JacoInterface(JacoRobot):
             elif cmd.type == 'TOOL':
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
-                position, orientation_q, orientation_rad, orientation_deg = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
-                msg, success = self.send_tool_pose_cmd(position, orientation_q)
+                pose_mq, orientation_q, orientation_rad = convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:])
+                poses = [float(n) for n in pose_mq]
+                msg, success = self.send_tool_pose_cmd(poses[:3], poses[3:])
                 return self.get_state(success=success, msg=msg)
  
             else:
@@ -414,4 +415,3 @@ class JacoInterface(JacoRobot):
 
 if __name__ == '__main__':
     jaco = JacoInterface()
-
