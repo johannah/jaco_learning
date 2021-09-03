@@ -222,18 +222,18 @@ def convert_joint_angles(current_joint_angle_radians, unit, relative, target_joi
     target_joint_position: relative or absolute joint position in degrees or radians. TODO size of input
     """
  
-    assert unit in ['deg', 'rad']
+    assert unit in ['mdeg', 'mrad']
     # current joint estimate is in degrees
     if relative:
         current_joint_angle_degrees = [np.rad2deg(current_joint_angle_radians[i]) for i in range(len(current_joint_angle_radians))]
-    if unit == 'deg':
+    if unit == 'mdeg':
         # get absolute value
         if relative:
             target_joint_degree = [target_joint_position[i] + current_joint_angle_degrees[i] for i in range(len(target_joint_position))]
         else:
             target_joint_degree = target_joint_position
         target_joint_radian = list(map(math.radians, target_joint_degree))
-    elif unit == 'rad':
+    elif unit == 'mrad':
         if relative:
             # get absolute value
             target_joint_degree = [math.degrees(target_joint_position[i]) + current_joint_angle_degrees[i] for i in range(len(target_joint_position))]
