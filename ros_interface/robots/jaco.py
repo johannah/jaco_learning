@@ -286,12 +286,12 @@ class JacoRobot(object):
     def send_tool_pose_cmd(self, position, orientation_q):
         robot_tool_pose = self.get_tool_pose()
 
-        print("REQUESTING POSE before fence of:", position)
-        position, result = trim_target_pose_safety(
-            position, self.fence_min_x, self.fence_max_x, self.fence_min_y,
-            self.fence_max_y, self.fence_min_z, self.fence_max_z)
-        # based on pose_action_client.py
-        print("REQUESTING POSE after fence of:", position)
+        # print("REQUESTING POSE before fence of:", position)
+        # position, result = trim_target_pose_safety(
+        #     position, self.fence_min_x, self.fence_max_x, self.fence_min_y,
+        #     self.fence_max_y, self.fence_min_z, self.fence_max_z)
+        # # based on pose_action_client.py
+        # print("REQUESTING POSE after fence of:", position)
         result = ''
         # TODO - does wait_for_server belong here or when it is defined?
         self.tool_pose_requester.wait_for_server()
@@ -485,26 +485,23 @@ class JacoInterface(JacoRobot):
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
                 position, orientation_q, orientation_rad, orientation_deg = \
-                    convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:-1])
-                # TODO: Do we care about these success msgs? since we're sending two commands here
+                    convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:6])
+
                 msg, success = self.send_tool_pose_cmd(position, orientation_q)
-                #self.send_tool_pose_cmd(position, orientation_q)
                 # We assume the actions are between -1 and 1 (value-min/max-min))
                 # Translate to percentage for all fingers
-                # finger_norm = (cmd.data[-1] +1)/2
-                # print('Finger norm values ', finger_norm)
-                # finger_percentage = finger_norm * 100
+                finger_norm = (cmd.data[-1] +1)/2
+                finger_percentage = finger_norm * 100
                 # print('Finger percentage ', finger_percentage)
-                # finger_cmds = np.repeat(finger_percentage, 3)
-                # current_finger_pose = self.get_finger_pose()
-                # finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
-                #                                             'percent', False, finger_cmds)
-                # positions_temp1 = [max(0.0, n) for n in finger_turn]
-                # finger_maxTurn = 6800
-                # positions_temp2 = [min(n, finger_maxTurn) for n in positions_temp1]
-                # positions = [float(n) for n in positions_temp2]
-                # print('Sending finger poses ', positions)
-                # msg, success = self.send_finger_pose_cmd(positions)
+                finger_cmds = np.repeat(finger_percentage, 3)
+                current_finger_pose = self.get_finger_pose()
+                finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
+                                                            'percent', False, finger_cmds)
+                positions_temp1 = [max(0.0, n) for n in finger_turn]
+                finger_maxTurn = 6800
+                positions_temp2 = [min(n, finger_maxTurn) for n in positions_temp1]
+                positions = [float(n) for n in positions_temp2]
+                self.send_finger_pose_cmd(positions)
                 
                 return self.get_state(success=success, msg=msg)
 
