@@ -51,6 +51,7 @@ from kinova_msgs.srv import HomeArm, SetTorqueControlMode, SetTorqueControlParam
 
 from utils import Quaternion2EulerXYZ, EulerXYZ2Quaternion, trim_target_pose_safety
 from utils import convert_tool_pose, convert_joint_angles, convert_to_degrees
+from utils import convert_finger_pose
 #from jaco_control.msg import InteractionParams
 from ros_interface.srv import initialize, reset, step, home, get_state
 
@@ -105,7 +106,7 @@ class JacoRobot(object):
 
         # Callback data holders
         self.robot_joint_state = JointState()
-        self.robot_finger_pose = [0.0, 0.0, 0.0]
+        self.robot_finger_pose = FingerPosition()
 
         self.joint_angle_requester_path = self.prefix + '_driver/joints_action/joint_angles'
         self.joint_angle_requester = actionlib.SimpleActionClient(
@@ -189,7 +190,8 @@ class JacoRobot(object):
             'joint_pos': [],
             'joint_vel': [],
             'joint_effort': [],
-            'tool_pose': []
+            'tool_pose': [],
+            'finger_pose': []
         }
         self.state_lock.release()
 
@@ -216,6 +218,9 @@ class JacoRobot(object):
         ]
 
         robot_finger_pose = self.get_finger_pose()
+        finger_pose = [robot_finger_pose.finger1,
+                       robot_finger_pose.finger2,
+                       robot_finger_pose.finger3]
 
         self.state['n_states'] += 1
         self.state['time_offset'] = time.time() - self.state_start
@@ -223,6 +228,7 @@ class JacoRobot(object):
         self.state['joint_vel'] = robot_joint_state.velocity
         self.state['joint_effort'] = robot_joint_state.effort
         self.state['tool_pose'] = tool_pose
+        self.state['finger_pose'] = finger_pose
         self.joint_state_rcvd = True
 
     def get_robot_state(self):
@@ -329,7 +335,6 @@ class JacoRobot(object):
                 rospy.Duration(self.request_timeout_secs)):
             self.finger_pose_requester.get_result()
             result += '+TOOL_POSE_FINISHED'
-            robot_tool_pose = self.get_finger_pose()
             success = True
         else:
             self.finger_pose_requester.cancel_all_goals()
@@ -445,10 +450,9 @@ class JacoInterface(JacoRobot):
         while st['n_states'] < 1:
             time.sleep(.1)
             st = self.get_robot_state()
-        #return success, msg, [], st['n_states'], st['time_offset'], st['joint_pos'], st['joint_vel'], st['joint_effort'], st['tool_pose']
         print('get_state', st)
         return success, msg, [], st['n_states'], [st['time_offset']], st[
-            'joint_pos'], st['joint_vel'], st['joint_effort'], st['tool_pose']
+            'joint_pos'], st['joint_vel'], st['joint_effort'], st['tool_pose'], st['finger_pose']
 
     def step(self, cmd):
         if self.initialized:
@@ -480,11 +484,28 @@ class JacoInterface(JacoRobot):
             elif cmd.type == 'TOOL':
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
-                pose_mq, orientation_q, orientation_rad = convert_tool_pose(
-                    current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3],
-                    cmd.data[3:])
-                poses = [float(n) for n in pose_mq]
-                msg, success = self.send_tool_pose_cmd(poses[:3], poses[3:])
+                position, orientation_q, orientation_rad, orientation_deg = \
+                    convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:-1])
+                # TODO: Do we care about these success msgs? since we're sending two commands here
+                msg, success = self.send_tool_pose_cmd(position, orientation_q)
+                #self.send_tool_pose_cmd(position, orientation_q)
+                # We assume the actions are between -1 and 1 (value-min/max-min))
+                # Translate to percentage for all fingers
+                # finger_norm = (cmd.data[-1] +1)/2
+                # print('Finger norm values ', finger_norm)
+                # finger_percentage = finger_norm * 100
+                # print('Finger percentage ', finger_percentage)
+                # finger_cmds = np.repeat(finger_percentage, 3)
+                # current_finger_pose = self.get_finger_pose()
+                # finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
+                #                                             'percent', False, finger_cmds)
+                # positions_temp1 = [max(0.0, n) for n in finger_turn]
+                # finger_maxTurn = 6800
+                # positions_temp2 = [min(n, finger_maxTurn) for n in positions_temp1]
+                # positions = [float(n) for n in positions_temp2]
+                # print('Sending finger poses ', positions)
+                # msg, success = self.send_finger_pose_cmd(positions)
+                
                 return self.get_state(success=success, msg=msg)
 
             else:
