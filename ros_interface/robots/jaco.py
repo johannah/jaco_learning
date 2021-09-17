@@ -69,8 +69,6 @@ class JacoConfig(BaseConfig):
         self.server_port = self.cfg['base']['server_port']
         # Robot parameters
         self.prefix = '/' + self.robot_name
-        # from sahand
-        self.MAX_FINGER_TURNS = 6800
         self.set_PID()
 
     def verify_config(self):
@@ -85,6 +83,7 @@ class JacoRobot(object):
         self.tool_pose_lock = threading.Lock()
         self.finger_pose_lock = threading.Lock()
 
+        self.MAX_FINGER_TURNS = 6800
         #self.n_states = 0
         self.request_timeout_secs = 10
         rospy.loginfo('starting init of ros')
