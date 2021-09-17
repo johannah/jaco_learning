@@ -498,8 +498,7 @@ class JacoInterface(JacoRobot):
                 finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
                                                             'percent', False, finger_cmds)
                 positions_temp1 = [max(0.0, n) for n in finger_turn]
-                finger_maxTurn = 6800
-                positions_temp2 = [min(n, finger_maxTurn) for n in positions_temp1]
+                positions_temp2 = [min(n, self.MAX_FINGER_TURNS) for n in positions_temp1]
                 positions = [float(n) for n in positions_temp2]
                 self.send_finger_pose_cmd(positions)
                 
