@@ -14,3 +14,4 @@ float64[] joint_pos
 float64[] joint_vel 
 float64[] joint_effort
 float64[] tool_pos
+float64[] finger_pos
