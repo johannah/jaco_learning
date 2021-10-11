@@ -483,13 +483,20 @@ class JacoInterface(JacoRobot):
             elif cmd.type == 'TOOL':
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
+
+                translation = cmd.data[:3]
+                finger = cmd.data[-1]
+                if cmd.unit == 'mq':
+                    rotation = cmd.data[3:7]
+                else:
+                    rotation = cmd.data[3:6]
                 position, orientation_q, orientation_rad, orientation_deg = \
-                    convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, cmd.data[:3], cmd.data[3:6])
+                    convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, translation, rotation)
 
                 msg, success = self.send_tool_pose_cmd(position, orientation_q)
                 # We assume the actions are between -1 and 1 (value-min/max-min))
                 # Translate to percentage for all fingers
-                finger_norm = (cmd.data[-1] +1)/2
+                finger_norm = (finger +1)/2
                 finger_percentage = finger_norm * 100
                 # print('Finger percentage ', finger_percentage)
                 finger_cmds = np.repeat(finger_percentage, 3)
