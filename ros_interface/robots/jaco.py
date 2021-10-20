@@ -354,8 +354,7 @@ class JacoRobot(object):
         joint_cmd.angles.joint4 = joint_angles_degrees[3]
         joint_cmd.angles.joint5 = joint_angles_degrees[4]
         joint_cmd.angles.joint6 = joint_angles_degrees[5]
-        if len(joint_angles_degrees) == 7:
-            joint_cmd.angles.joint7 = joint_angles_degrees[6]
+        joint_cmd.angles.joint7 = joint_angles_degrees[6]
         self.joint_angle_requester.send_goal(joint_cmd)
 
         result = ''
