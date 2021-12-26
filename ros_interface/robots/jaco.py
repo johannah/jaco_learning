@@ -369,7 +369,7 @@ class JacoRobot(object):
             self.joint_angle_requester.cancel_all_goals()
             result += '+TIMEOUT'
             success = False
-            rospy.logerror("FAILED TO SEND JOINT ANGLE COMMAND: %s"%result)
+            rospy.logerr("FAILED TO SEND JOINT ANGLE COMMAND: %s"%result)
         return result, success
 
     def send_joint_velocity_cmd(self, velocity):
