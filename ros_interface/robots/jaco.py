@@ -369,6 +369,7 @@ class JacoRobot(object):
             self.joint_angle_requester.cancel_all_goals()
             result += '+TIMEOUT'
             success = False
+            rospy.logerror("FAILED TO SEND JOINT ANGLE COMMAND: %s"%result)
         return result, success
 
     def send_joint_velocity_cmd(self, velocity):
@@ -392,7 +393,6 @@ class JacoRobot(object):
         joint_cmd.joint7 = 0.0
         if self.n_joints == 7:
             joint_cmd.joint7 = velocity[6]
-        print('publishing', joint_cmd)
         self.joint_velocity_publisher.publish(joint_cmd)
         return 'sent', success
 
@@ -438,7 +438,7 @@ class JacoInterface(JacoRobot):
         rospy.loginfo('initialized --->')
         return self.get_state(success=True, msg='successfully initialized')
 
-    def get_state(self, success=True, msg=''):
+    def get_state(self, cmd=None, success=True, msg=''):
         """ 
             :msg is not used - this returns state regardless of message passed in (for service calls)
             :success bool to indicate if a cmd was successfully executed
