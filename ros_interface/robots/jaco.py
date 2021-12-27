@@ -472,41 +472,31 @@ class JacoInterface(JacoRobot):
                 joint_angles_degrees, joint_angles_radians = convert_joint_angles(
                     current_joint_angles_radians, cmd.unit, cmd.relative,
                     cmd.data)
-                #print("ANGLE STEP CMD", cmd.data)
-                # TODO add safety planner
-                #print("ANGLE STEP actual", joint_angles_degrees)
                 msg, success = self.send_joint_angle_cmd(joint_angles_degrees)
                 success = True
+                if len(cmd.data) > self.n_joints:
+                    # there is finger command here
+                    print("finger data found")
+                    finger = cmd.data[self.n_joints:]
+                    self.build_finger_cmd(finger, is_relative=cmd.relative)
                 return self.get_state(success=success, msg=msg)
-
             elif cmd.type == 'TOOL':
                 # command end effector pose in cartesian space
                 current_tool_pose = self.get_tool_pose()
+                if cmd.unit == 'mq':
+                    pose_len = 7
+                else:
+                    pose_len = 6
 
                 translation = cmd.data[:3]
-                finger = cmd.data[-1]
-                if cmd.unit == 'mq':
-                    rotation = cmd.data[3:7]
-                else:
-                    rotation = cmd.data[3:6]
+                rotation = cmd.data[3:pose_len]
+                finger = cmd.data[pose_len:]
                 position, orientation_q, orientation_rad, orientation_deg = \
                     convert_tool_pose(current_tool_pose, cmd.unit, cmd.relative, translation, rotation)
 
                 msg, success = self.send_tool_pose_cmd(position, orientation_q)
-                # We assume the actions are between -1 and 1 (value-min/max-min))
-                # Translate to percentage for all fingers
-                finger_norm = (finger +1)/2
-                finger_percentage = finger_norm * 100
-                # print('Finger percentage ', finger_percentage)
-                finger_cmds = np.repeat(finger_percentage, 3)
-                current_finger_pose = self.get_finger_pose()
-                finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
-                                                            'percent', False, finger_cmds)
-                positions_temp1 = [max(0.0, n) for n in finger_turn]
-                positions_temp2 = [min(n, self.MAX_FINGER_TURNS) for n in positions_temp1]
-                positions = [float(n) for n in positions_temp2]
-                self.send_finger_pose_cmd(positions)
-                
+                self.build_finger_cmd(finger, is_relative=cmd.relative)
+               
                 return self.get_state(success=success, msg=msg)
 
             else:
@@ -514,6 +504,47 @@ class JacoInterface(JacoRobot):
         else:
             return self.get_state(success=False, msg='not initialized')
 
+    def build_finger_cmd(self, fingers, is_relative):
+        """
+        input: finger which is array of size 3 or 1. If 3, finger joints are controlled independently, else, the single command is repeated for all fingers
+
+
+          
+        THIS IS NOT CORRECT FOR HANDLING ROBOSUITE COMMANDS DIRECTLY
+        In robosuite, the fingers start at qpos [0.5, 0.5, 0.5]
+        # then each step is the following, where speed = 0.005
+        self.current_action = np.clip(self.current_action - self.speed * np.sign(action), -1.0, 1.0)
+
+        """
+        # Translate to percentage for all fingers
+        if type(fingers) not in [list, np.array]:
+            fingers = np.array([fingers, fingers, fingers])
+        # if we were only given one finger command, repeat for all fingers
+        if len(fingers) < 3:
+            fingers = np.array([fingers[0], fingers[0], fingers[0]])
+
+        fingers = np.clip(fingers, -1, 1)
+        finger_norm = (fingers + 1) / 2.0
+        target_finger_percentage = finger_norm * 100
+        print('Finger percentage ', target_finger_percentage)
+        current_finger_pose = self.get_finger_pose()
+        finger_turn, finger_meter, finger_percent = convert_finger_pose(current_finger_pose,
+                                                    'percent', False, target_finger_percentage)
+        positions_temp1 = [max(0.0, n) for n in finger_turn]
+        positions_temp2 = [min(n, self.MAX_FINGER_TURNS) for n in positions_temp1]
+        positions = [float(n) for n in positions_temp2]
+        print('sending target positions', positions)
+        #if is_relative:
+        #    
+        #    print('***************current finger position')
+        #    current_finger_pose = self.get_finger_pose()
+        #    print(current_finger_pose)
+        #    current_finger_turn, current_finger_meter, current_finger_percent = convert_finger_pose(current_finger_pose,
+        #                                            'percent', False, finger_percentage)
+        #    self.current_action = np.clip(self.current_action - self.finger_speed * np.sign(action), -1.0, 1.0)
+ 
+        self.send_finger_pose_cmd(positions)
+ 
     def home(self, msg=None):
         print('calling home')
         self.home_robot_service()
@@ -522,6 +553,8 @@ class JacoInterface(JacoRobot):
     def reset(self, msg=None):
         print('calling reset')
         self.home_robot_service()
+        # JRH should we set finger at beginning or does home do it?
+        #self.build_finger_cmd([0.5, 0.5, 0.5], False)
         # TODO - reset should take a goto message and use the controller to go to a particular position
         # this function does not return until the arm has reached the home position
         return self.get_state(success=True)

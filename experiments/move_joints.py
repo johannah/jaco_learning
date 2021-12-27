@@ -11,6 +11,9 @@ from ros_interface.srv import reset, step, home, get_state, initialize
 class JacoJointTest():
     def __init__(self):
         self.setup_ros()
+        # max joint step size is 10 degrees
+        # otherwise robosuite steps dont work well
+        self.max_joint_step = 10
 
     def setup_ros(self):
         print('setting up ros')
@@ -46,33 +49,43 @@ class JacoJointTest():
         np.savez(filename, joint_pos=jtest.joint_pos, eef_pos=self.eef_pos, actions=self.actions)
 
     def move_joint(self, joint, offset_degrees):
-        rospy.sleep(.1)
-        joints = np.zeros(7)
-        joints[joint] = offset_degrees
-        ss = self.service_step('ANGLE', True, 'mdeg', joints)
-        self.joint_pos.append(ss.joint_pos)
-        self.eef_pos.append(ss.tool_pos)
-        self.actions.append(joints)
-        print(ss.success, ss.joint_pos[joint])
+        print('starting', offset_degrees)
+        while np.abs(offset_degrees) > 0:
+            step = np.sign(offset_degrees) * np.min([np.abs(self.max_joint_step), np.abs(offset_degrees)])
+            offset_degrees = np.sign(offset_degrees) * (np.abs(offset_degrees)-np.abs(step))
+            print(step, offset_degrees)
+            joints = np.zeros(8)
+            joints[joint] = step
+            ss = self.service_step('ANGLE', True, 'mdeg', joints)
+            self.joint_pos.append(ss.joint_pos)
+            self.eef_pos.append(ss.tool_pos)
+            self.actions.append(joints)
+            print(ss.success, ss.joint_pos[joint])
 
  
 def joint_0_full_revolution():
+    """
+     turn all around base axis
+    """
     jtest.service_reset()
     jtest.reset_data()
     jtest.add_state()
-    for x in np.arange(0, 400, 10):
-        jtest.move_joint(0, 10)
+    for x in np.arange(0, 400, jtest.max_joint_step):
+        jtest.move_joint(0, jtest.max_joint_step)
     jtest.add_state()
     jtest.save_data('datasets/joint_0_full_revolution')
 
  
 def all_joints_move():
+    """
+     go back and forth for each joint
+    """
     jtest.service_reset()
     jtest.reset_data()
     jtest.add_state()
     # for joint 3 (big elbow, go up first! (positive))
     jtest.move_joint(3, 20)
-    offset = 10
+    offset = 20
     for jt in range(7):
         jtest.move_joint(jt, offset)
         jtest.move_joint(jt, -offset)
@@ -81,6 +94,9 @@ def all_joints_move():
 
  
 def move_tool_orientation():
+    """
+     move over center axis with tool orientation change
+    """
     jtest.service_reset()
     jtest.reset_data()
     jtest.add_state()
@@ -104,6 +120,26 @@ def move_tool_orientation():
     jtest.move_joint(3, 30)
     jtest.save_data('datasets/tool_orientation')
 
+ 
+def finger_joints_move():
+    """
+    FINGERS DON"T REALLY WORK CORRECTLY YET
+    """
+    #jtest.service_reset()
+    jtest.reset_data()
+    jtest.add_state()
+    # for joint 3 (big elbow, go up first! (positive))
+    # open -> 0
+    for ii in np.linspace(-1, 1, 10):
+        print(ii)
+        jtest.move_joint(7,10) 
+    for ii in np.linspace(-1, 1, 10):
+        print(ii)
+        jtest.move_joint(7,-10) 
+ 
+    jtest.save_data('datasets/finger_joints_move')
+
+
 
 
 if __name__ == '__main__':
@@ -113,8 +149,9 @@ if __name__ == '__main__':
         os.makedir(data_dir)
     
     #joint_0_full_revolution()
-   # all_joints_move()
+    all_joints_move()
     move_tool_orientation()
+    ##finger_joints_move()
           
             
     
