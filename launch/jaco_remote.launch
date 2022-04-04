@@ -5,7 +5,7 @@
       <arg name="feedback_publish_rate" value="0.01"/>
     </include>
 
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>
+<!--    <include file="$(find realsense2_camera)/launch/rs_camera.launch"/> -->
     <node pkg="ros_interface" type="jaco.py" name="jaco_interface" output="screen"/>
     <node pkg="ros_interface" type="robot_server.py" name="robot_server" output="screen"/>
 </launch>
