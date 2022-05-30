@@ -196,7 +196,7 @@ def convert_joint_angles(current_joint_angle_radians, unit, relative,
     return target_joint_degree, target_joint_radian
 
 
-def convert_finger_pose(current_finger_pose, unit, relative, finger_value):
+def convert_finger_pose(current_finger_pose, unit, finger_value, relative=False):
 
 
     current_finger_pose = [current_finger_pose.finger1,
